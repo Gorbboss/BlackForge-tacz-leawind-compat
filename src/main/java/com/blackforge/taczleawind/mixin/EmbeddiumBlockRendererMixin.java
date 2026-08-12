@@ -2,12 +2,14 @@ package com.blackforge.taczleawind.mixin;
 
 import com.blackforge.taczleawind.client.HiddenBlockManager;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.lang.reflect.Method;
 import java.util.Map;
@@ -15,7 +17,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Embeddium 0.3.x bypasses vanilla BlockRenderDispatcher while meshing terrain.
- * Cancel its model render at the real per-block entry point.
+ *
+ * Hidden blocks emit no geometry. Solid neighbors facing a hidden block must
+ * emit their normally-culled face, forming an opaque cavity wall that prevents
+ * the hidden viewing volume from becoming an X-ray through the map.
  */
 @Pseudo
 @Mixin(
@@ -36,6 +41,20 @@ public abstract class EmbeddiumBlockRendererMixin {
         BlockPos pos = blackforge$getPosition(context);
         if (pos != null && HiddenBlockManager.isHidden(pos)) {
             ci.cancel();
+        }
+    }
+
+    @Inject(method = "isFaceVisible", at = @At("RETURN"), cancellable = true, require = 0)
+    private void blackforge$renderHiddenBoundaryFace(
+            @Coerce Object context,
+            Direction face,
+            CallbackInfoReturnable<Boolean> cir
+    ) {
+        BlockPos pos = blackforge$getPosition(context);
+        if (pos != null
+                && !HiddenBlockManager.isHidden(pos)
+                && HiddenBlockManager.isHidden(pos.relative(face))) {
+            cir.setReturnValue(true);
         }
     }
 
