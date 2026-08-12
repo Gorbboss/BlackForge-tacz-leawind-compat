@@ -4,47 +4,45 @@ import com.blackforge.taczleawind.ClientConfig;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
 public final class HiddenBlockManager {
-    /**
-     * A five-block-wide obstruction tube means a 2.5-block radius.
-     * Keep this as a hard minimum so an older generated config containing the
-     * previous 0.32 value cannot silently restore the pencil-thin corridor.
-     */
-    private static final double REQUIRED_TUBE_RADIUS = 2.5D;
+    private static final double CAMERA_RADIUS = 1.5D;
+    private static final double PLAYER_RADIUS = 2.5D;
+    private static final double INVISIBLE_CORE_FRACTION = 0.70D;
 
-    private static final Set<BlockPos> HIDDEN = new HashSet<>();
+    /*
+     * Chunk meshes can be built on Embeddium worker threads. Publish complete,
+     * immutable sets rather than mutating a HashSet while workers read it.
+     */
+    private static volatile Set<BlockPos> hidden = Set.of();
 
     public static boolean isHidden(BlockPos pos) {
-        return HIDDEN.contains(pos);
+        return hidden.contains(pos);
     }
 
     public static Set<BlockPos> snapshot() {
-        return Collections.unmodifiableSet(HIDDEN);
+        return hidden;
     }
 
     public static void clear() {
-        if (HIDDEN.isEmpty()) return;
-        Minecraft mc = Minecraft.getInstance();
-        Set<BlockPos> old = new HashSet<>(HIDDEN);
-        HIDDEN.clear();
-        markDirty(mc, old);
+        Set<BlockPos> old = hidden;
+        if (old.isEmpty()) return;
+
+        hidden = Set.of();
+        markDirty(Minecraft.getInstance(), old);
     }
 
     public static void update() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null || mc.player == null || !ClientConfig.HIDE_CAMERA_OBSTRUCTIONS.get()) {
-            clear();
-            return;
-        }
-
-        if (mc.options.getCameraType().isFirstPerson()) {
+        if (mc.level == null || mc.player == null
+                || !ClientConfig.HIDE_CAMERA_OBSTRUCTIONS.get()
+                || mc.options.getCameraType().isFirstPerson()) {
             clear();
             return;
         }
@@ -60,22 +58,17 @@ public final class HiddenBlockManager {
             return;
         }
 
-        double radius = Math.max(
-                REQUIRED_TUBE_RADIUS,
-                ClientConfig.HIDE_CORRIDOR_RADIUS.get()
-        );
         double blockCenterAllowance = Math.sqrt(3.0D) * 0.5D;
-        double searchRadius = radius + blockCenterAllowance;
-        double searchRadiusSqr = searchRadius * searchRadius;
+        double maximumSearchRadius = PLAYER_RADIUS + blockCenterAllowance;
 
-        int minX = (int) Math.floor(Math.min(from.x, to.x) - searchRadius);
-        int minY = (int) Math.floor(Math.min(from.y, to.y) - searchRadius);
-        int minZ = (int) Math.floor(Math.min(from.z, to.z) - searchRadius);
-        int maxX = (int) Math.floor(Math.max(from.x, to.x) + searchRadius);
-        int maxY = (int) Math.floor(Math.max(from.y, to.y) + searchRadius);
-        int maxZ = (int) Math.floor(Math.max(from.z, to.z) + searchRadius);
+        int minX = (int) Math.floor(Math.min(from.x, to.x) - maximumSearchRadius);
+        int minY = (int) Math.floor(Math.min(from.y, to.y) - maximumSearchRadius);
+        int minZ = (int) Math.floor(Math.min(from.z, to.z) - maximumSearchRadius);
+        int maxX = (int) Math.floor(Math.max(from.x, to.x) + maximumSearchRadius);
+        int maxY = (int) Math.floor(Math.max(from.y, to.y) + maximumSearchRadius);
+        int maxZ = (int) Math.floor(Math.max(from.z, to.z) + maximumSearchRadius);
 
-        HashSet<BlockPos> next = new HashSet<>();
+        HashSet<BlockPos> nextMutable = new HashSet<>();
 
         for (int x = minX; x <= maxX; x++) {
             for (int y = minY; y <= maxY; y++) {
@@ -87,39 +80,54 @@ public final class HiddenBlockManager {
                     }
 
                     Vec3 center = Vec3.atCenterOf(pos);
-                    if (distanceToSegmentSqr(center, from, segment, segmentLengthSqr)
-                            <= searchRadiusSqr) {
-                        next.add(pos.immutable());
+                    Vec3 fromStart = center.subtract(from);
+                    double t = fromStart.dot(segment) / segmentLengthSqr;
+                    t = Math.max(0.0D, Math.min(1.0D, t));
+
+                    Vec3 nearest = from.add(segment.scale(t));
+                    double outerRadius = CAMERA_RADIUS
+                            + (PLAYER_RADIUS - CAMERA_RADIUS) * t;
+                    double invisibleRadius =
+                            outerRadius * INVISIBLE_CORE_FRACTION
+                                    + blockCenterAllowance;
+
+                    if (center.distanceToSqr(nearest)
+                            <= invisibleRadius * invisibleRadius) {
+                        nextMutable.add(pos.immutable());
                     }
                 }
             }
         }
 
-        if (!next.equals(HIDDEN)) {
-            HashSet<BlockPos> changed = new HashSet<>(HIDDEN);
+        Set<BlockPos> next = Set.copyOf(nextMutable);
+        Set<BlockPos> old = hidden;
+
+        if (!next.equals(old)) {
+            HashSet<BlockPos> changed = new HashSet<>(old);
             changed.addAll(next);
-            HIDDEN.clear();
-            HIDDEN.addAll(next);
+            hidden = next;
             markDirty(mc, changed);
         }
     }
 
-    private static double distanceToSegmentSqr(
-            Vec3 point,
-            Vec3 start,
-            Vec3 segment,
-            double segmentLengthSqr
-    ) {
-        double t = point.subtract(start).dot(segment) / segmentLengthSqr;
-        t = Math.max(0.0D, Math.min(1.0D, t));
-        return point.distanceToSqr(start.add(segment.scale(t)));
-    }
-
     private static void markDirty(Minecraft mc, Set<BlockPos> positions) {
         if (mc.levelRenderer == null) return;
-        for (BlockPos p : positions) {
-            BlockState state = mc.level != null ? mc.level.getBlockState(p) : null;
-            mc.levelRenderer.setBlockDirty(p, state, state);
+
+        HashSet<Long> sections = new HashSet<>();
+        for (BlockPos pos : positions) {
+            sections.add(SectionPos.asLong(
+                    SectionPos.blockToSectionCoord(pos.getX()),
+                    SectionPos.blockToSectionCoord(pos.getY()),
+                    SectionPos.blockToSectionCoord(pos.getZ())
+            ));
+        }
+
+        for (long packed : sections) {
+            mc.levelRenderer.setSectionDirty(
+                    SectionPos.x(packed),
+                    SectionPos.y(packed),
+                    SectionPos.z(packed)
+            );
         }
     }
 
