@@ -8,6 +8,8 @@
     "TaczCameraRecoilMixin",
     "TaczCrosshairMixin",
     "CameraNoClipMixin",
+    "LeawindCameraNoClipMixin",
+    "GameRendererPickMixin",
     "BlockRenderDispatcherMixin",
     "BlockFaceBoundaryMixin"
   ],
