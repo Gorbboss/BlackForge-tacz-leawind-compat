@@ -14,7 +14,7 @@ import java.util.Set;
 
 public final class HiddenBlockManager {
     private static final double CAMERA_APEX_BACK_OFFSET = 1.0D;
-    private static final double PLAYER_END_BACK_OFFSET = 1.0D;
+    private static final double PLAYER_END_BACK_OFFSET = 2.0D;
     private static final double CONE_HALF_ANGLE_RADIANS = Math.toRadians(35.0D);
     private static final double PLAYER_END_RADIUS = 1.5D;
 
@@ -99,6 +99,23 @@ public final class HiddenBlockManager {
                     }
 
                     Vec3 center = Vec3.atCenterOf(pos);
+
+                    /*
+                     * Preserve a 7-block-wide floor one block below the
+                     * character, extending from the character back toward the
+                     * camera. This guarantees an opaque lower enclosure even
+                     * when the cutaway intersects uneven terrain.
+                     */
+                    int protectedFloorY = (int) Math.floor(mc.player.getY()) - 1;
+                    if (pos.getY() == protectedFloorY
+                            && isInsideProtectedFloor(
+                                    center,
+                                    cameraPos,
+                                    playerPos
+                            )) {
+                        continue;
+                    }
+
                     Vec3 fromStart = center.subtract(start);
                     double axialDistance = fromStart.dot(shapeDirection);
 
@@ -142,6 +159,32 @@ public final class HiddenBlockManager {
             hidden = next;
             markDirty(mc, changed);
         }
+    }
+
+    private static boolean isInsideProtectedFloor(
+            Vec3 point,
+            Vec3 cameraPos,
+            Vec3 playerPos
+    ) {
+        Vec3 horizontal = new Vec3(
+                playerPos.x - cameraPos.x,
+                0.0D,
+                playerPos.z - cameraPos.z
+        );
+        double lengthSqr = horizontal.lengthSqr();
+        if (lengthSqr < 1.0E-4D) {
+            return point.distanceToSqr(
+                    new Vec3(playerPos.x, point.y, playerPos.z)
+            ) <= 12.25D;
+        }
+
+        Vec3 start = new Vec3(cameraPos.x, point.y, cameraPos.z);
+        Vec3 segment = new Vec3(horizontal.x, 0.0D, horizontal.z);
+        double t = point.subtract(start).dot(segment) / lengthSqr;
+        if (t < 0.0D || t > 1.0D) return false;
+
+        Vec3 nearest = start.add(segment.scale(t));
+        return point.distanceToSqr(nearest) <= 12.25D;
     }
 
     private static void markDirty(Minecraft mc, Set<BlockPos> positions) {
