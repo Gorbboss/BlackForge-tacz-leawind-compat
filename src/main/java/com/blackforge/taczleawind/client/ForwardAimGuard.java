@@ -3,6 +3,8 @@ package com.blackforge.taczleawind.client;
 import com.blackforge.taczleawind.ClientConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
@@ -33,7 +35,15 @@ public final class ForwardAimGuard {
         if (angle > ClientConfig.FORWARD_HEMISPHERE_DEGREES.get()) {
             double distance = Math.max(6.0D, targetDir.length());
             Vec3 legalPoint = origin.add(forward.scale(distance));
-            mc.hitResult = HitResult.miss(legalPoint, player.getDirection(), net.minecraft.core.BlockPos.containing(legalPoint));
+
+            // Minecraft 1.20.1 does not provide HitResult.miss(...).
+            // BlockHitResult.miss(...) is the correct vanilla factory.
+            mc.hitResult = BlockHitResult.miss(
+                    legalPoint,
+                    player.getDirection(),
+                    BlockPos.containing(legalPoint)
+            );
+
             mc.crosshairPickEntity = null;
         }
     }
