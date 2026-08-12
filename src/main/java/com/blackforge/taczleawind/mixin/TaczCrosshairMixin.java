@@ -1,15 +1,22 @@
 package com.blackforge.taczleawind.mixin;
 
-import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
-import net.minecraft.client.Minecraft;
+import net.minecraft.client.CameraType;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Redirect;
 
+/**
+ * TaCZ third-person crosshair compatibility without MixinExtras.
+ *
+ * v0.1.0 used @ModifyExpressionValue from MixinExtras, but MixinExtras was
+ * not included as a dependency. This uses standard Sponge Mixin instead.
+ */
 @Pseudo
 @Mixin(targets = "com.tacz.guns.client.event.RenderCrosshairEvent", remap = false)
 public abstract class TaczCrosshairMixin {
-    @ModifyExpressionValue(
+
+    @Redirect(
             method = "renderCrosshair",
             at = @At(
                     value = "INVOKE",
@@ -18,19 +25,7 @@ public abstract class TaczCrosshairMixin {
             ),
             require = 0
     )
-    private static boolean blackforge$allowThirdPersonCrosshair(boolean original) {
-        return original || !Minecraft.getInstance().options.getCameraType().isFirstPerson();
-    }
-
-    @ModifyExpressionValue(
-            method = {"onRenderOverlay", "lambda$onRenderOverlay$0"},
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lcom/tacz/guns/api/client/gameplay/IClientPlayerGunOperator;getClientAimingProgress(F)F"
-            ),
-            require = 0
-    )
-    private static float blackforge$keepCrosshairVisibleWhileAiming(float oldValue) {
-        return Minecraft.getInstance().options.getCameraType().isFirstPerson() ? oldValue : 0.0F;
+    private static boolean blackforge$allowThirdPersonCrosshair(CameraType cameraType) {
+        return true;
     }
 }
