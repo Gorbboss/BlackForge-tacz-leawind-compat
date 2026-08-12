@@ -8,10 +8,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Applies the forward-only filter after every vanilla/Leawind crosshair pick.
- *
- * A client-tick-only check is too early: GameRenderer#pick is also called
- * during level rendering and immediately before Leawind interactions.
+ * Rebuilds the target after every vanilla/Leawind crosshair pick so terrain
+ * behind the player cannot overwrite the forward target.
  */
 @Mixin(GameRenderer.class)
 public abstract class GameRendererPickMixin {
@@ -20,6 +18,6 @@ public abstract class GameRendererPickMixin {
             float partialTick,
             CallbackInfo ci
     ) {
-        ForwardAimGuard.enforce();
+        ForwardAimGuard.enforce(partialTick);
     }
 }
