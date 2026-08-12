@@ -4,6 +4,7 @@ import com.blackforge.taczleawind.ClientConfig;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
@@ -12,13 +13,14 @@ import java.util.HashSet;
 import java.util.Set;
 
 public final class HiddenBlockManager {
-    private static final double CAMERA_RADIUS = 1.5D;
-    private static final double PLAYER_RADIUS = 2.5D;
-    private static final double INVISIBLE_CORE_FRACTION = 0.70D;
+    private static final double CAMERA_APEX_BACK_OFFSET = 1.0D;
+    private static final double PLAYER_END_BACK_OFFSET = 1.0D;
+    private static final double CONE_HALF_ANGLE_RADIANS = Math.toRadians(35.0D);
+    private static final double PLAYER_END_RADIUS = 1.5D;
 
     /*
-     * Chunk meshes can be built on Embeddium worker threads. Publish complete,
-     * immutable sets rather than mutating a HashSet while workers read it.
+     * Embeddium builds chunk meshes on worker threads. Always publish a
+     * complete immutable snapshot.
      */
     private static volatile Set<BlockPos> hidden = Set.of();
 
@@ -48,25 +50,41 @@ public final class HiddenBlockManager {
         }
 
         Camera camera = mc.gameRenderer.getMainCamera();
-        Vec3 from = camera.getPosition();
-        Vec3 to = mc.player.getEyePosition(1.0F).add(0.0D, -0.30D, 0.0D);
-        Vec3 segment = to.subtract(from);
-        double segmentLengthSqr = segment.lengthSqr();
+        Vec3 cameraPos = camera.getPosition();
+        Vec3 playerPos = mc.player.getEyePosition(1.0F)
+                .add(0.0D, -0.30D, 0.0D);
 
-        if (segmentLengthSqr < 1.0E-4D) {
+        Vec3 cameraToPlayer = playerPos.subtract(cameraPos);
+        double cameraDistance = cameraToPlayer.length();
+        if (cameraDistance < 2.05D) {
             clear();
             return;
         }
 
-        double blockCenterAllowance = Math.sqrt(3.0D) * 0.5D;
-        double maximumSearchRadius = PLAYER_RADIUS + blockCenterAllowance;
+        Vec3 axis = cameraToPlayer.scale(1.0D / cameraDistance);
 
-        int minX = (int) Math.floor(Math.min(from.x, to.x) - maximumSearchRadius);
-        int minY = (int) Math.floor(Math.min(from.y, to.y) - maximumSearchRadius);
-        int minZ = (int) Math.floor(Math.min(from.z, to.z) - maximumSearchRadius);
-        int maxX = (int) Math.floor(Math.max(from.x, to.x) + maximumSearchRadius);
-        int maxY = (int) Math.floor(Math.max(from.y, to.y) + maximumSearchRadius);
-        int maxZ = (int) Math.floor(Math.max(from.z, to.z) + maximumSearchRadius);
+        // Start one block behind the camera and stop one block before the
+        // character, on the camera side of the character.
+        Vec3 start = cameraPos.subtract(axis.scale(CAMERA_APEX_BACK_OFFSET));
+        Vec3 end = playerPos.subtract(axis.scale(PLAYER_END_BACK_OFFSET));
+        Vec3 shapeAxis = end.subtract(start);
+        double shapeLength = shapeAxis.length();
+        Vec3 shapeDirection = shapeAxis.scale(1.0D / shapeLength);
+        double midpoint = shapeLength * 0.5D;
+
+        // 70 degrees is the complete opening angle, hence tan(35 degrees).
+        double maximumRadius = Math.tan(CONE_HALF_ANGLE_RADIANS) * midpoint;
+        maximumRadius = Math.max(maximumRadius, PLAYER_END_RADIUS);
+
+        double blockAllowance = Math.sqrt(3.0D) * 0.5D;
+        double searchRadius = maximumRadius + blockAllowance;
+
+        int minX = (int) Math.floor(Math.min(start.x, end.x) - searchRadius);
+        int minY = (int) Math.floor(Math.min(start.y, end.y) - searchRadius);
+        int minZ = (int) Math.floor(Math.min(start.z, end.z) - searchRadius);
+        int maxX = (int) Math.floor(Math.max(start.x, end.x) + searchRadius);
+        int maxY = (int) Math.floor(Math.max(start.y, end.y) + searchRadius);
+        int maxZ = (int) Math.floor(Math.max(start.z, end.z) + searchRadius);
 
         HashSet<BlockPos> nextMutable = new HashSet<>();
 
@@ -75,24 +93,40 @@ public final class HiddenBlockManager {
                 for (int z = minZ; z <= maxZ; z++) {
                     BlockPos pos = new BlockPos(x, y, z);
                     BlockState state = mc.level.getBlockState(pos);
-                    if (state.isAir() || state.getCollisionShape(mc.level, pos).isEmpty()) {
+                    if (state.isAir()
+                            || state.getCollisionShape(mc.level, pos).isEmpty()) {
                         continue;
                     }
 
                     Vec3 center = Vec3.atCenterOf(pos);
-                    Vec3 fromStart = center.subtract(from);
-                    double t = fromStart.dot(segment) / segmentLengthSqr;
-                    t = Math.max(0.0D, Math.min(1.0D, t));
+                    Vec3 fromStart = center.subtract(start);
+                    double axialDistance = fromStart.dot(shapeDirection);
 
-                    Vec3 nearest = from.add(segment.scale(t));
-                    double outerRadius = CAMERA_RADIUS
-                            + (PLAYER_RADIUS - CAMERA_RADIUS) * t;
-                    double invisibleRadius =
-                            outerRadius * INVISIBLE_CORE_FRACTION
-                                    + blockCenterAllowance;
+                    // Do not hide anything beyond either end cap.
+                    if (axialDistance < 0.0D || axialDistance > shapeLength) {
+                        continue;
+                    }
+
+                    double radius;
+                    if (axialDistance <= midpoint) {
+                        radius = Math.tan(CONE_HALF_ANGLE_RADIANS)
+                                * axialDistance;
+                    } else {
+                        double closingProgress =
+                                (axialDistance - midpoint)
+                                        / (shapeLength - midpoint);
+                        radius = maximumRadius
+                                + (PLAYER_END_RADIUS - maximumRadius)
+                                * closingProgress;
+                    }
+
+                    Vec3 nearest = start.add(
+                            shapeDirection.scale(axialDistance)
+                    );
+                    double acceptedRadius = radius + blockAllowance;
 
                     if (center.distanceToSqr(nearest)
-                            <= invisibleRadius * invisibleRadius) {
+                            <= acceptedRadius * acceptedRadius) {
                         nextMutable.add(pos.immutable());
                     }
                 }
@@ -115,11 +149,13 @@ public final class HiddenBlockManager {
 
         HashSet<Long> sections = new HashSet<>();
         for (BlockPos pos : positions) {
-            sections.add(SectionPos.asLong(
-                    SectionPos.blockToSectionCoord(pos.getX()),
-                    SectionPos.blockToSectionCoord(pos.getY()),
-                    SectionPos.blockToSectionCoord(pos.getZ())
-            ));
+            addSection(sections, pos);
+
+            // A visible cavity face may belong to the neighboring block, even
+            // across a render-section boundary.
+            for (Direction direction : Direction.values()) {
+                addSection(sections, pos.relative(direction));
+            }
         }
 
         for (long packed : sections) {
@@ -129,6 +165,14 @@ public final class HiddenBlockManager {
                     SectionPos.z(packed)
             );
         }
+    }
+
+    private static void addSection(Set<Long> sections, BlockPos pos) {
+        sections.add(SectionPos.asLong(
+                SectionPos.blockToSectionCoord(pos.getX()),
+                SectionPos.blockToSectionCoord(pos.getY()),
+                SectionPos.blockToSectionCoord(pos.getZ())
+        ));
     }
 
     private HiddenBlockManager() {}
