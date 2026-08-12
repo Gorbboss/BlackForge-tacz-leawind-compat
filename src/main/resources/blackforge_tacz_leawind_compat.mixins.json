@@ -10,6 +10,7 @@
     "CameraNoClipMixin",
     "LeawindCameraNoClipMixin",
     "GameRendererPickMixin",
+    "EmbeddiumBlockRendererMixin",
     "BlockRenderDispatcherMixin",
     "BlockFaceBoundaryMixin"
   ],
