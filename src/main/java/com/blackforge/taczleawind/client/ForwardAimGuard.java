@@ -5,7 +5,6 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -88,17 +87,11 @@ public final class ForwardAimGuard {
         double pickRange = mc.gameMode.getPickRange();
         Vec3 end = start.add(rayDirection.scale(pickRange));
 
-        BlockHitResult blockHit = player.pick(
-                start.distanceTo(end),
-                partialTick,
-                false
-        );
-
         /*
-         * Entity#pick starts at the entity eye, not our forward plane, so use
-         * the level clip performed by the camera ray for blocks below.
+         * Trace blocks directly from the forward plane instead of using
+         * Entity#pick, which always starts at the player's eye.
          */
-        blockHit = mc.level.clip(new net.minecraft.world.level.ClipContext(
+        HitResult blockHit = mc.level.clip(new net.minecraft.world.level.ClipContext(
                 start,
                 end,
                 net.minecraft.world.level.ClipContext.Block.OUTLINE,
