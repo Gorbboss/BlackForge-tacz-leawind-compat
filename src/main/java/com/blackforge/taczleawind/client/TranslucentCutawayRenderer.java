@@ -17,10 +17,10 @@ import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 
 import java.util.Map;
-import org.joml.Vector3d;
 
 /**
  * Re-renders the two cutaway edge shells in the translucent pass after their
