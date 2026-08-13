@@ -6,7 +6,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.decoration.ItemFrame;
+import net.minecraft.world.entity.decoration.Painting;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.HashSet;
@@ -23,6 +30,7 @@ public final class HiddenBlockManager {
      * complete immutable snapshot.
      */
     private static volatile Set<BlockPos> hidden = Set.of();
+    private static volatile ConeVolume cone = ConeVolume.INACTIVE;
 
     public static boolean isHidden(BlockPos pos) {
         return hidden.contains(pos);
@@ -32,7 +40,15 @@ public final class HiddenBlockManager {
         return hidden;
     }
 
+    public static boolean shouldHideEntity(Entity entity) {
+        if (!(entity instanceof Painting) && !(entity instanceof ItemFrame)) {
+            return false;
+        }
+        return cone.contains(entity.getBoundingBox());
+    }
+
     public static void clear() {
+        cone = ConeVolume.INACTIVE;
         Set<BlockPos> old = hidden;
         if (old.isEmpty()) return;
 
@@ -57,6 +73,22 @@ public final class HiddenBlockManager {
         Vec3 cameraToPlayer = playerPos.subtract(cameraPos);
         double cameraDistance = cameraToPlayer.length();
         if (cameraDistance < 2.05D) {
+            clear();
+            return;
+        }
+
+        /*
+         * Do not create a cutaway in open space. OUTLINE includes rendered
+         * non-solid models such as grass, cobwebs, doors and trapdoors.
+         */
+        HitResult obstruction = mc.level.clip(new ClipContext(
+                cameraPos,
+                playerPos,
+                ClipContext.Block.OUTLINE,
+                ClipContext.Fluid.NONE,
+                mc.player
+        ));
+        if (obstruction.getType() != HitResult.Type.BLOCK) {
             clear();
             return;
         }
@@ -94,7 +126,7 @@ public final class HiddenBlockManager {
                     BlockPos pos = new BlockPos(x, y, z);
                     BlockState state = mc.level.getBlockState(pos);
                     if (state.isAir()
-                            || state.getCollisionShape(mc.level, pos).isEmpty()) {
+                            || state.getRenderShape() == RenderShape.INVISIBLE) {
                         continue;
                     }
 
@@ -141,6 +173,15 @@ public final class HiddenBlockManager {
             }
         }
 
+        cone = new ConeVolume(
+                start,
+                shapeDirection,
+                shapeLength,
+                midpoint,
+                maximumRadius,
+                (int) Math.floor(mc.player.getY()) + 1
+        );
+
         Set<BlockPos> next = Set.copyOf(nextMutable);
         Set<BlockPos> old = hidden;
 
@@ -181,6 +222,44 @@ public final class HiddenBlockManager {
                 SectionPos.blockToSectionCoord(pos.getY()),
                 SectionPos.blockToSectionCoord(pos.getZ())
         ));
+    }
+
+    private record ConeVolume(
+            Vec3 start,
+            Vec3 direction,
+            double length,
+            double midpoint,
+            double maximumRadius,
+            int minimumY
+    ) {
+        private static final ConeVolume INACTIVE =
+                new ConeVolume(Vec3.ZERO, Vec3.ZERO, 0.0D, 0.0D, 0.0D, Integer.MAX_VALUE);
+
+        private boolean contains(AABB box) {
+            if (length <= 0.0D || box.maxY < minimumY) return false;
+
+            Vec3 center = box.getCenter();
+            double axial = center.subtract(start).dot(direction);
+            if (axial < 0.0D || axial > length) return false;
+
+            double radius;
+            if (axial <= midpoint) {
+                radius = Math.tan(CONE_HALF_ANGLE_RADIANS) * axial;
+            } else {
+                double progress = (axial - midpoint) / (length - midpoint);
+                radius = maximumRadius
+                        + (PLAYER_END_RADIUS - maximumRadius) * progress;
+            }
+
+            double entityAllowance = 0.5D * Math.sqrt(
+                    box.getXsize() * box.getXsize()
+                            + box.getYsize() * box.getYsize()
+                            + box.getZsize() * box.getZsize()
+            );
+            Vec3 nearest = start.add(direction.scale(axial));
+            double accepted = radius + entityAllowance;
+            return center.distanceToSqr(nearest) <= accepted * accepted;
+        }
     }
 
     private HiddenBlockManager() {}
