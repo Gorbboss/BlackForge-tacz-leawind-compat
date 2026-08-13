@@ -39,8 +39,6 @@ public final class HiddenBlockManager {
 
     private static volatile Set<BlockPos> hidden = Set.of();
     private static volatile Map<BlockPos, Float> translucent = Map.of();
-    private static volatile Map<BlockPos, Float> targetOpacity = Map.of();
-    private static volatile float fadeStrength;
     private static volatile ConeVolume cone = ConeVolume.INACTIVE;
 
     public static boolean isHidden(BlockPos pos) {
@@ -55,18 +53,21 @@ public final class HiddenBlockManager {
         return translucent;
     }
 
-    public static ConeRenderData coneRenderData() {
+    public static CameraBoxRenderData cameraBoxRenderData() {
         ConeVolume current = cone;
-        return new ConeRenderData(
-                current.start,
-                current.direction,
-                current.midpoint,
-                current.maximumRadius
-                        + FIRST_FADE_SHELL_WIDTH
-                        + SECOND_FADE_SHELL_WIDTH
-                        + 0.20D,
-                current.length > 0.0D
-        );
+        Minecraft mc = Minecraft.getInstance();
+        if (current.length <= 0.0D || mc.level == null) {
+            return CameraBoxRenderData.INACTIVE;
+        }
+
+        Vec3 camera = mc.gameRenderer.getMainCamera().getPosition();
+        Vec3 forward = current.direction.normalize();
+        Vec3 helper = Math.abs(forward.y) < 0.9D
+                ? new Vec3(0.0D, 1.0D, 0.0D)
+                : new Vec3(1.0D, 0.0D, 0.0D);
+        Vec3 right = forward.cross(helper).normalize();
+        Vec3 up = right.cross(forward).normalize();
+        return new CameraBoxRenderData(camera, forward, right, up, true);
     }
 
     public static void beginOverlayRender() {
@@ -89,26 +90,8 @@ public final class HiddenBlockManager {
     }
 
     public static void clear() {
-        if (hidden.isEmpty()) {
-            cone = ConeVolume.INACTIVE;
-            translucent = Map.of();
-            targetOpacity = Map.of();
-            fadeStrength = 0.0F;
-            return;
-        }
-
-        fadeStrength = Math.max(0.0F, fadeStrength - 0.12F);
-        if (fadeStrength > 0.0F) {
-            translucent = animatedOpacity(targetOpacity, fadeStrength);
-            return;
-        }
-
-        Set<BlockPos> old = hidden;
         cone = ConeVolume.INACTIVE;
-        translucent = Map.of();
-        targetOpacity = Map.of();
-        hidden = Set.of();
-        markDirty(Minecraft.getInstance(), old);
+        transitionOpacity(Map.of());
     }
 
     public static void update() {
@@ -254,39 +237,44 @@ public final class HiddenBlockManager {
                 (int) Math.floor(mc.player.getY()) + 1
         );
 
-        fadeStrength = Math.min(1.0F, fadeStrength + 0.12F);
-        Set<BlockPos> next = Set.copyOf(nextMutable);
-        Map<BlockPos, Float> nextTargets = Map.copyOf(nextTranslucent);
-        Map<BlockPos, Float> nextFade =
-                animatedOpacity(nextTargets, fadeStrength);
-        Set<BlockPos> old = hidden;
-
-        if (!next.equals(old)) {
-            HashSet<BlockPos> changed = new HashSet<>(old);
-            changed.addAll(next);
-            hidden = next;
-            targetOpacity = nextTargets;
-            translucent = nextFade;
-            markDirty(mc, changed);
-        } else {
-            targetOpacity = nextTargets;
-            if (!nextFade.equals(translucent)) {
-                translucent = nextFade;
-            }
-        }
+        transitionOpacity(Map.copyOf(nextTranslucent));
     }
 
-    private static Map<BlockPos, Float> animatedOpacity(
-            Map<BlockPos, Float> targets,
-            float strength
-    ) {
-        HashMap<BlockPos, Float> result = new HashMap<>();
-        for (Map.Entry<BlockPos, Float> entry : targets.entrySet()) {
-            float opacity = 1.0F
-                    - strength * (1.0F - entry.getValue());
-            result.put(entry.getKey(), opacity);
+    /*
+     * Every block owns its transition. New/remaining blocks approach their
+     * spatial shell opacity; blocks which leave the cutaway remain suppressed
+     * and re-rendered until they smoothly return to fully opaque.
+     */
+    private static void transitionOpacity(Map<BlockPos, Float> targets) {
+        Minecraft mc = Minecraft.getInstance();
+        HashSet<BlockPos> positions = new HashSet<>(translucent.keySet());
+        positions.addAll(targets.keySet());
+
+        HashMap<BlockPos, Float> nextOpacity = new HashMap<>();
+        final float step = 0.12F;
+        for (BlockPos pos : positions) {
+            float current = translucent.getOrDefault(pos, 1.0F);
+            float target = targets.getOrDefault(pos, 1.0F);
+            float difference = target - current;
+            float next = Math.abs(difference) <= step
+                    ? target
+                    : current + Math.copySign(step, difference);
+
+            if (targets.containsKey(pos) || next < 0.999F) {
+                nextOpacity.put(pos, Math.max(0.0F, Math.min(1.0F, next)));
+            }
         }
-        return Map.copyOf(result);
+
+        Set<BlockPos> old = hidden;
+        Set<BlockPos> nextHidden = Set.copyOf(nextOpacity.keySet());
+        translucent = Map.copyOf(nextOpacity);
+        hidden = nextHidden;
+
+        if (!old.equals(nextHidden)) {
+            HashSet<BlockPos> changed = new HashSet<>(old);
+            changed.addAll(nextHidden);
+            markDirty(mc, changed);
+        }
     }
 
     private static boolean hasMeaningfulObstruction(
@@ -358,13 +346,18 @@ public final class HiddenBlockManager {
         ));
     }
 
-    public record ConeRenderData(
-            Vec3 start,
-            Vec3 direction,
-            double length,
-            double radius,
+    public record CameraBoxRenderData(
+            Vec3 camera,
+            Vec3 forward,
+            Vec3 right,
+            Vec3 up,
             boolean active
-    ) {}
+    ) {
+        private static final CameraBoxRenderData INACTIVE =
+                new CameraBoxRenderData(
+                        Vec3.ZERO, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO, false
+                );
+    }
 
     private record ConeVolume(
             Vec3 start,
