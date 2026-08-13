@@ -15,8 +15,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ScopedFirstPersonController {
     private static final float FIRST_PERSON_MAGNIFICATION_THRESHOLD = 2.5F;
+    private static final float FIRST_PERSON_AIM_PROGRESS_THRESHOLD = 0.65F;
     private static final Map<Class<?>, Method> AIM_METHODS = new ConcurrentHashMap<>();
     private static final Map<Class<?>, Method> ZOOM_METHODS = new ConcurrentHashMap<>();
+    private static final Map<Class<?>, Method> AIM_PROGRESS_METHODS = new ConcurrentHashMap<>();
     private static volatile boolean active;
 
     public static void update() {
@@ -31,7 +33,9 @@ public final class ScopedFirstPersonController {
 
         ItemStack stack = player.getMainHandItem();
         active = blackforge$isAiming(player)
-                && blackforge$getAimingZoom(stack) > FIRST_PERSON_MAGNIFICATION_THRESHOLD;
+                && blackforge$getAimingZoom(stack) > FIRST_PERSON_MAGNIFICATION_THRESHOLD
+                && blackforge$getAimingProgress(player)
+                        >= FIRST_PERSON_AIM_PROGRESS_THRESHOLD;
     }
 
     public static boolean isActive() {
@@ -47,6 +51,30 @@ public final class ScopedFirstPersonController {
             return method != null && Boolean.TRUE.equals(method.invoke(player));
         } catch (ReflectiveOperationException ignored) {
             return false;
+        }
+    }
+
+    private static float blackforge$getAimingProgress(LocalPlayer player) {
+        try {
+            Method method = AIM_PROGRESS_METHODS.computeIfAbsent(
+                    player.getClass(),
+                    type -> blackforge$findMethod(
+                            type,
+                            "getClientAimingProgress",
+                            float.class
+                    )
+            );
+            if (method == null) return 0.0F;
+
+            Object value = method.invoke(
+                    player,
+                    Minecraft.getInstance().getFrameTime()
+            );
+            return value instanceof Number number
+                    ? number.floatValue()
+                    : 0.0F;
+        } catch (ReflectiveOperationException ignored) {
+            return 0.0F;
         }
     }
 
