@@ -1,5 +1,6 @@
 package com.blackforge.taczleawind.mixin;
 
+import com.blackforge.taczleawind.client.ScopedFirstPersonController;
 import net.minecraft.client.CameraType;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -7,8 +8,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Keeps the explicitly selected rear-third-person perspective from being
- * reported as temporary first person by Leawind.
+ * Blocks Leawind's proximity-based temporary first person, while allowing
+ * TaCZ optics above 2.5x to temporarily use first-person camera behavior.
  */
 @Mixin(CameraType.class)
 public abstract class LeawindPerspectiveLockMixin {
@@ -17,7 +18,7 @@ public abstract class LeawindPerspectiveLockMixin {
             CallbackInfoReturnable<Boolean> cir
     ) {
         if ((CameraType) (Object) this == CameraType.THIRD_PERSON_BACK) {
-            cir.setReturnValue(false);
+            cir.setReturnValue(ScopedFirstPersonController.isActive());
         }
     }
 }
