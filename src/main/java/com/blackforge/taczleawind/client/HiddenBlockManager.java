@@ -39,6 +39,8 @@ public final class HiddenBlockManager {
 
     private static volatile Set<BlockPos> hidden = Set.of();
     private static volatile Map<BlockPos, Float> translucent = Map.of();
+    private static volatile Map<BlockPos, Float> targetOpacity = Map.of();
+    private static volatile float fadeStrength;
     private static volatile ConeVolume cone = ConeVolume.INACTIVE;
 
     public static boolean isHidden(BlockPos pos) {
@@ -87,11 +89,24 @@ public final class HiddenBlockManager {
     }
 
     public static void clear() {
+        if (hidden.isEmpty()) {
+            cone = ConeVolume.INACTIVE;
+            translucent = Map.of();
+            targetOpacity = Map.of();
+            fadeStrength = 0.0F;
+            return;
+        }
+
+        fadeStrength = Math.max(0.0F, fadeStrength - 0.12F);
+        if (fadeStrength > 0.0F) {
+            translucent = animatedOpacity(targetOpacity, fadeStrength);
+            return;
+        }
+
+        Set<BlockPos> old = hidden;
         cone = ConeVolume.INACTIVE;
         translucent = Map.of();
-        Set<BlockPos> old = hidden;
-        if (old.isEmpty()) return;
-
+        targetOpacity = Map.of();
         hidden = Set.of();
         markDirty(Minecraft.getInstance(), old);
     }
@@ -209,6 +224,7 @@ public final class HiddenBlockManager {
                     BlockPos immutable = pos.immutable();
                     if (distance <= innerEdge) {
                         nextMutable.add(immutable);
+                        nextTranslucent.put(immutable, 0.0F);
                     } else if (distance <= firstEdge) {
                         // Smoothly increase from fully invisible to 30% opaque.
                         float progress = (float) ((distance - innerEdge)
@@ -238,19 +254,39 @@ public final class HiddenBlockManager {
                 (int) Math.floor(mc.player.getY()) + 1
         );
 
+        fadeStrength = Math.min(1.0F, fadeStrength + 0.12F);
         Set<BlockPos> next = Set.copyOf(nextMutable);
-        Map<BlockPos, Float> nextFade = Map.copyOf(nextTranslucent);
+        Map<BlockPos, Float> nextTargets = Map.copyOf(nextTranslucent);
+        Map<BlockPos, Float> nextFade =
+                animatedOpacity(nextTargets, fadeStrength);
         Set<BlockPos> old = hidden;
 
         if (!next.equals(old)) {
             HashSet<BlockPos> changed = new HashSet<>(old);
             changed.addAll(next);
             hidden = next;
+            targetOpacity = nextTargets;
             translucent = nextFade;
             markDirty(mc, changed);
-        } else if (!nextFade.equals(translucent)) {
-            translucent = nextFade;
+        } else {
+            targetOpacity = nextTargets;
+            if (!nextFade.equals(translucent)) {
+                translucent = nextFade;
+            }
         }
+    }
+
+    private static Map<BlockPos, Float> animatedOpacity(
+            Map<BlockPos, Float> targets,
+            float strength
+    ) {
+        HashMap<BlockPos, Float> result = new HashMap<>();
+        for (Map.Entry<BlockPos, Float> entry : targets.entrySet()) {
+            float opacity = 1.0F
+                    - strength * (1.0F - entry.getValue());
+            result.put(entry.getKey(), opacity);
+        }
+        return Map.copyOf(result);
     }
 
     private static boolean hasMeaningfulObstruction(
