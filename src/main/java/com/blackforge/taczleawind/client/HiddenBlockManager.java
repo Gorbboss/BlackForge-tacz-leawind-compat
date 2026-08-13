@@ -16,7 +16,9 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 public final class HiddenBlockManager {
@@ -29,11 +31,33 @@ public final class HiddenBlockManager {
      * Embeddium builds chunk meshes on worker threads. Always publish a
      * complete immutable snapshot.
      */
+    private static final double FIRST_FADE_SHELL_WIDTH = 1.0D;
+    private static final double SECOND_FADE_SHELL_WIDTH = 1.0D;
+    private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
+            ThreadLocal.withInitial(() -> false);
+
     private static volatile Set<BlockPos> hidden = Set.of();
+    private static volatile Map<BlockPos, Float> translucent = Map.of();
     private static volatile ConeVolume cone = ConeVolume.INACTIVE;
 
     public static boolean isHidden(BlockPos pos) {
+        return !OVERLAY_RENDERING.get() && hidden.contains(pos);
+    }
+
+    public static boolean isCutaway(BlockPos pos) {
         return hidden.contains(pos);
+    }
+
+    public static Map<BlockPos, Float> translucentSnapshot() {
+        return translucent;
+    }
+
+    public static void beginOverlayRender() {
+        OVERLAY_RENDERING.set(true);
+    }
+
+    public static void endOverlayRender() {
+        OVERLAY_RENDERING.set(false);
     }
 
     public static Set<BlockPos> snapshot() {
@@ -49,6 +73,7 @@ public final class HiddenBlockManager {
 
     public static void clear() {
         cone = ConeVolume.INACTIVE;
+        translucent = Map.of();
         Set<BlockPos> old = hidden;
         if (old.isEmpty()) return;
 
@@ -109,7 +134,10 @@ public final class HiddenBlockManager {
         maximumRadius = Math.max(maximumRadius, PLAYER_END_RADIUS);
 
         double blockAllowance = Math.sqrt(3.0D) * 0.5D;
-        double searchRadius = maximumRadius + blockAllowance;
+        double searchRadius = maximumRadius
+                + FIRST_FADE_SHELL_WIDTH
+                + SECOND_FADE_SHELL_WIDTH
+                + blockAllowance;
 
         int minX = (int) Math.floor(Math.min(start.x, end.x) - searchRadius);
         int minY = (int) Math.floor(Math.min(start.y, end.y) - searchRadius);
@@ -119,6 +147,7 @@ public final class HiddenBlockManager {
         int maxZ = (int) Math.floor(Math.max(start.z, end.z) + searchRadius);
 
         HashSet<BlockPos> nextMutable = new HashSet<>();
+        HashMap<BlockPos, Float> nextTranslucent = new HashMap<>();
 
         for (int x = minX; x <= maxX; x++) {
             for (int y = minY; y <= maxY; y++) {
@@ -163,11 +192,23 @@ public final class HiddenBlockManager {
                     Vec3 nearest = start.add(
                             shapeDirection.scale(axialDistance)
                     );
-                    double acceptedRadius = radius + blockAllowance;
+                    double distance = Math.sqrt(center.distanceToSqr(nearest));
+                    double innerEdge = radius + blockAllowance;
+                    double firstEdge = innerEdge + FIRST_FADE_SHELL_WIDTH;
+                    double secondEdge = firstEdge + SECOND_FADE_SHELL_WIDTH;
 
-                    if (center.distanceToSqr(nearest)
-                            <= acceptedRadius * acceptedRadius) {
-                        nextMutable.add(pos.immutable());
+                    BlockPos immutable = pos.immutable();
+                    if (distance <= innerEdge) {
+                        // Fully invisible center.
+                        nextMutable.add(immutable);
+                    } else if (distance <= firstEdge) {
+                        // 70% transparent = 30% opacity.
+                        nextMutable.add(immutable);
+                        nextTranslucent.put(immutable, 0.30F);
+                    } else if (distance <= secondEdge) {
+                        // 30% transparent = 70% opacity.
+                        nextMutable.add(immutable);
+                        nextTranslucent.put(immutable, 0.70F);
                     }
                 }
             }
@@ -183,13 +224,17 @@ public final class HiddenBlockManager {
         );
 
         Set<BlockPos> next = Set.copyOf(nextMutable);
+        Map<BlockPos, Float> nextFade = Map.copyOf(nextTranslucent);
         Set<BlockPos> old = hidden;
 
         if (!next.equals(old)) {
             HashSet<BlockPos> changed = new HashSet<>(old);
             changed.addAll(next);
             hidden = next;
+            translucent = nextFade;
             markDirty(mc, changed);
+        } else if (!nextFade.equals(translucent)) {
+            translucent = nextFade;
         }
     }
 
