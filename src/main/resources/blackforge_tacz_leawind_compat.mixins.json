@@ -9,6 +9,8 @@
     "TaczCrosshairMixin",
     "CameraNoClipMixin",
     "LeawindCameraNoClipMixin",
+    "LeawindPerspectiveLockMixin",
+    "LeawindPlayerRenderMixin",
     "GameRendererPickMixin",
     "LocalPlayerVisibilityMixin",
     "EmbeddiumBlockRendererMixin",
