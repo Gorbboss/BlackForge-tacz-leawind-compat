@@ -33,9 +33,9 @@ public final class TranslucentCutawayRenderer {
         }
 
         Map<BlockPos, Float> blocks = HiddenBlockManager.translucentSnapshot();
-        HiddenBlockManager.ConeRenderData chamber =
-                HiddenBlockManager.coneRenderData();
-        if (blocks.isEmpty() && !chamber.active()) return;
+        HiddenBlockManager.CameraBoxRenderData enclosure =
+                HiddenBlockManager.cameraBoxRenderData();
+        if (blocks.isEmpty() && !enclosure.active()) return;
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
@@ -80,26 +80,36 @@ public final class TranslucentCutawayRenderer {
 
         buffers.endBatch(RenderType.translucent());
 
-        if (chamber.active()) {
-            renderBlackChamber(chamber, camera);
+        if (enclosure.active()) {
+            renderBlackCameraBox(enclosure, camera);
         }
     }
 
-    private static void renderBlackChamber(
-            HiddenBlockManager.ConeRenderData chamber,
+    /*
+     * Five-sided 3x3x2 enclosure around the camera. The face toward the
+     * player is deliberately open. This replaces the long black cone/tube.
+     */
+    private static void renderBlackCameraBox(
+            HiddenBlockManager.CameraBoxRenderData box,
             Camera camera
     ) {
-        final int segments = 32;
-        Vec3 axis = chamber.direction().normalize();
-        Vec3 helper = Math.abs(axis.y) < 0.9D
-                ? new Vec3(0.0D, 1.0D, 0.0D)
-                : new Vec3(1.0D, 0.0D, 0.0D);
-        Vec3 right = axis.cross(helper).normalize();
-        Vec3 up = right.cross(axis).normalize();
-        Vec3 apex = chamber.start();
-        Vec3 ringCenter = apex.add(axis.scale(chamber.length()));
-        double radius = chamber.radius();
-        Vec3 cameraPos = camera.getPosition();
+        Vec3 center = box.camera();
+        Vec3 forward = box.forward();
+        Vec3 right = box.right();
+        Vec3 up = box.up();
+        double half = 1.5D;
+
+        Vec3 back = center.subtract(forward.scale(0.25D));
+        Vec3 front = center.add(forward.scale(2.0D));
+
+        Vec3 btl = back.add(up.scale(half)).subtract(right.scale(half));
+        Vec3 btr = back.add(up.scale(half)).add(right.scale(half));
+        Vec3 bbl = back.subtract(up.scale(half)).subtract(right.scale(half));
+        Vec3 bbr = back.subtract(up.scale(half)).add(right.scale(half));
+        Vec3 ftl = front.add(up.scale(half)).subtract(right.scale(half));
+        Vec3 ftr = front.add(up.scale(half)).add(right.scale(half));
+        Vec3 fbl = front.subtract(up.scale(half)).subtract(right.scale(half));
+        Vec3 fbr = front.subtract(up.scale(half)).add(right.scale(half));
 
         RenderSystem.enableDepthTest();
         RenderSystem.disableCull();
@@ -108,25 +118,31 @@ public final class TranslucentCutawayRenderer {
 
         BufferBuilder builder = Tesselator.getInstance().getBuilder();
         builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        Vec3 cameraPos = camera.getPosition();
 
-        for (int i = 0; i < segments; i++) {
-            double a0 = Math.PI * 2.0D * i / segments;
-            double a1 = Math.PI * 2.0D * (i + 1) / segments;
-            Vec3 p0 = ringCenter
-                    .add(right.scale(Math.cos(a0) * radius))
-                    .add(up.scale(Math.sin(a0) * radius));
-            Vec3 p1 = ringCenter
-                    .add(right.scale(Math.cos(a1) * radius))
-                    .add(up.scale(Math.sin(a1) * radius));
-
-            vertex(builder, apex, cameraPos);
-            vertex(builder, p0, cameraPos);
-            vertex(builder, p1, cameraPos);
-            vertex(builder, apex, cameraPos);
-        }
+        // Rear, top, bottom, left and right. Front remains open.
+        quad(builder, btl, btr, bbr, bbl, cameraPos);
+        quad(builder, btl, ftl, ftr, btr, cameraPos);
+        quad(builder, bbl, bbr, fbr, fbl, cameraPos);
+        quad(builder, btl, bbl, fbl, ftl, cameraPos);
+        quad(builder, btr, ftr, fbr, bbr, cameraPos);
 
         BufferUploader.drawWithShader(builder.end());
         RenderSystem.enableCull();
+    }
+
+    private static void quad(
+            BufferBuilder builder,
+            Vec3 a,
+            Vec3 b,
+            Vec3 c,
+            Vec3 d,
+            Vec3 camera
+    ) {
+        vertex(builder, a, camera);
+        vertex(builder, b, camera);
+        vertex(builder, c, camera);
+        vertex(builder, d, camera);
     }
 
     private static void vertex(
