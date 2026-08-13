@@ -11,6 +11,7 @@ import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.decoration.Painting;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
@@ -50,6 +51,20 @@ public final class HiddenBlockManager {
 
     public static Map<BlockPos, Float> translucentSnapshot() {
         return translucent;
+    }
+
+    public static ConeRenderData coneRenderData() {
+        ConeVolume current = cone;
+        return new ConeRenderData(
+                current.start,
+                current.direction,
+                current.midpoint,
+                current.maximumRadius
+                        + FIRST_FADE_SHELL_WIDTH
+                        + SECOND_FADE_SHELL_WIDTH
+                        + 0.20D,
+                current.length > 0.0D
+        );
     }
 
     public static void beginOverlayRender() {
@@ -106,14 +121,7 @@ public final class HiddenBlockManager {
          * Do not create a cutaway in open space. OUTLINE includes rendered
          * non-solid models such as grass, cobwebs, doors and trapdoors.
          */
-        HitResult obstruction = mc.level.clip(new ClipContext(
-                cameraPos,
-                playerPos,
-                ClipContext.Block.OUTLINE,
-                ClipContext.Fluid.NONE,
-                mc.player
-        ));
-        if (obstruction.getType() != HitResult.Type.BLOCK) {
+        if (!hasMeaningfulObstruction(mc, cameraPos, playerPos)) {
             clear();
             return;
         }
@@ -155,7 +163,8 @@ public final class HiddenBlockManager {
                     BlockPos pos = new BlockPos(x, y, z);
                     BlockState state = mc.level.getBlockState(pos);
                     if (state.isAir()
-                            || state.getRenderShape() == RenderShape.INVISIBLE) {
+                            || state.getRenderShape() == RenderShape.INVISIBLE
+                            || isIgnoredVegetation(state)) {
                         continue;
                     }
 
@@ -199,16 +208,22 @@ public final class HiddenBlockManager {
 
                     BlockPos immutable = pos.immutable();
                     if (distance <= innerEdge) {
-                        // Fully invisible center.
                         nextMutable.add(immutable);
                     } else if (distance <= firstEdge) {
-                        // 70% transparent = 30% opacity.
+                        // Smoothly increase from fully invisible to 30% opaque.
+                        float progress = (float) ((distance - innerEdge)
+                                / FIRST_FADE_SHELL_WIDTH);
                         nextMutable.add(immutable);
-                        nextTranslucent.put(immutable, 0.30F);
+                        nextTranslucent.put(immutable, 0.30F * progress);
                     } else if (distance <= secondEdge) {
-                        // 30% transparent = 70% opacity.
+                        // Smoothly increase from 30% to 70% opacity.
+                        float progress = (float) ((distance - firstEdge)
+                                / SECOND_FADE_SHELL_WIDTH);
                         nextMutable.add(immutable);
-                        nextTranslucent.put(immutable, 0.70F);
+                        nextTranslucent.put(
+                                immutable,
+                                0.30F + 0.40F * progress
+                        );
                     }
                 }
             }
@@ -236,6 +251,44 @@ public final class HiddenBlockManager {
         } else if (!nextFade.equals(translucent)) {
             translucent = nextFade;
         }
+    }
+
+    private static boolean hasMeaningfulObstruction(
+            Minecraft mc,
+            Vec3 cameraPos,
+            Vec3 playerPos
+    ) {
+        Vec3 direction = playerPos.subtract(cameraPos).normalize();
+        Vec3 from = cameraPos;
+
+        // Skip replaceable vegetation hits and continue the visual ray.
+        for (int i = 0; i < 16; i++) {
+            HitResult hit = mc.level.clip(new ClipContext(
+                    from,
+                    playerPos,
+                    ClipContext.Block.OUTLINE,
+                    ClipContext.Fluid.NONE,
+                    mc.player
+            ));
+            if (hit.getType() != HitResult.Type.BLOCK) return false;
+
+            BlockPos pos = BlockPos.containing(hit.getLocation()
+                    .add(direction.scale(0.001D)));
+            BlockState state = mc.level.getBlockState(pos);
+            if (!isIgnoredVegetation(state)) return true;
+
+            from = hit.getLocation().add(direction.scale(0.05D));
+            if (from.distanceToSqr(playerPos) < 0.01D) return false;
+        }
+        return false;
+    }
+
+    private static boolean isIgnoredVegetation(BlockState state) {
+        return state.canBeReplaced()
+                && state.getCollisionShape(
+                        net.minecraft.world.level.EmptyBlockGetter.INSTANCE,
+                        BlockPos.ZERO
+                ).isEmpty();
     }
 
     private static void markDirty(Minecraft mc, Set<BlockPos> positions) {
@@ -268,6 +321,14 @@ public final class HiddenBlockManager {
                 SectionPos.blockToSectionCoord(pos.getZ())
         ));
     }
+
+    public record ConeRenderData(
+            Vec3 start,
+            Vec3 direction,
+            double length,
+            double radius,
+            boolean active
+    ) {}
 
     private record ConeVolume(
             Vec3 start,
