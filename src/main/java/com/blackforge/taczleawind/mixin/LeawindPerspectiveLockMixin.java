@@ -1,26 +1,23 @@
 package com.blackforge.taczleawind.mixin;
 
-import com.github.leawind.thirdperson.ThirdPersonStatus;
 import net.minecraft.client.CameraType;
-import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Prevents Leawind from temporarily impersonating first person while the user
- * has explicitly selected rear third person. Manual perspective changes remain
- * authoritative.
+ * Keeps the explicitly selected rear-third-person perspective from being
+ * reported as temporary first person by Leawind.
  */
-@Pseudo
-@Mixin(targets = "com.github.leawind.thirdperson.ThirdPersonEvents", remap = false)
+@Mixin(CameraType.class)
 public abstract class LeawindPerspectiveLockMixin {
-    @Inject(method = "onClientTickStart", at = @At("RETURN"), require = 0)
-    private static void blackforge$keepSelectedThirdPerson(CallbackInfo ci) {
-        if (Minecraft.getInstance().options.getCameraType() == CameraType.THIRD_PERSON_BACK) {
-            ThirdPersonStatus.isPerspectiveInverted = false;
+    @Inject(method = "isFirstPerson", at = @At("RETURN"), cancellable = true)
+    private void blackforge$keepSelectedThirdPerson(
+            CallbackInfoReturnable<Boolean> cir
+    ) {
+        if ((CameraType) (Object) this == CameraType.THIRD_PERSON_BACK) {
+            cir.setReturnValue(false);
         }
     }
 }
