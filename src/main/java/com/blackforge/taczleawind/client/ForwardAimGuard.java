@@ -37,11 +37,20 @@ public final class ForwardAimGuard {
          * preserves the visible crosshair direction while making every block
          * on the camera side of the player irrelevant.
          */
-        repickForwardOfPlayer(mc, player, partialTick);
+        HitResult forwardHit = pickForwardOfPlayer(
+                mc.gameMode.getPickRange(),
+                partialTick
+        );
+        if (forwardHit == null) return;
+
+        mc.hitResult = forwardHit;
+        if (forwardHit instanceof EntityHitResult entityHit) {
+            mc.crosshairPickEntity = entityHit.getEntity();
+        } else {
+            mc.crosshairPickEntity = null;
+        }
 
         HitResult hit = mc.hitResult;
-        if (hit == null) return;
-
         Vec3 origin = player.getEyePosition(partialTick);
         Vec3 targetDir = hit.getLocation().subtract(origin);
         Vec3 horizontalTarget = new Vec3(targetDir.x, 0.0D, targetDir.z);
@@ -69,11 +78,21 @@ public final class ForwardAimGuard {
         }
     }
 
-    private static void repickForwardOfPlayer(
-            Minecraft mc,
-            LocalPlayer player,
-            float partialTick
-    ) {
+    /**
+     * Produces the target Leawind and vanilla should use in third person.
+     * Nothing between the camera and the plane through the player's eyes can
+     * be selected, so a camera embedded in/behind a wall cannot aim at it.
+     */
+    public static HitResult pickForwardOfPlayer(double pickRange, float partialTick) {
+        if (!ClientConfig.FORWARD_ONLY_TARGETING.get()) return null;
+
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null || mc.level == null
+                || mc.options.getCameraType().isFirstPerson()) {
+            return null;
+        }
+
         Camera camera = mc.gameRenderer.getMainCamera();
         Vec3 cameraPos = camera.getPosition();
         Vec3 rayDirection = new Vec3(camera.getLookVector()).normalize();
@@ -83,14 +102,8 @@ public final class ForwardAimGuard {
         Vec3 start = cameraPos.add(
                 rayDirection.scale(Math.max(0.0D, playerPlaneDistance) + 0.05D)
         );
-
-        double pickRange = mc.gameMode.getPickRange();
         Vec3 end = start.add(rayDirection.scale(pickRange));
 
-        /*
-         * Trace blocks directly from the forward plane instead of using
-         * Entity#pick, which always starts at the player's eye.
-         */
         HitResult blockHit = mc.level.clip(new net.minecraft.world.level.ClipContext(
                 start,
                 end,
@@ -114,12 +127,9 @@ public final class ForwardAimGuard {
 
         if (entityHit != null
                 && start.distanceToSqr(entityHit.getLocation()) < blockDistanceSqr) {
-            mc.hitResult = entityHit;
-            mc.crosshairPickEntity = entityHit.getEntity();
-        } else {
-            mc.hitResult = blockHit;
-            mc.crosshairPickEntity = null;
+            return entityHit;
         }
+        return blockHit;
     }
 
     private ForwardAimGuard() {}
