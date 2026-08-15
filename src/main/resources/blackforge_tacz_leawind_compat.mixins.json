@@ -11,7 +11,7 @@
     "LeawindCameraNoClipMixin",
     "LeawindPerspectiveLockMixin",
     "LeawindPlayerRenderMixin",
-    "GameRendererPickMixin",
+    "LeawindForwardPickMixin",
     "LocalPlayerVisibilityMixin",
     "DecorationEntityCutawayMixin",
     "EmbeddiumBlockRendererMixin",
