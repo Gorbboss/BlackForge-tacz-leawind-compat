@@ -4,15 +4,21 @@ import com.blackforge.taczleawind.ClientConfig;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
+/**
+ * Filters the normal camera/crosshair pick without replacing Leawind's own
+ * completed CameraAgent pick. The camera-to-player segment defines the part
+ * of the crosshair ray that is not allowed to register.
+ */
 public final class ForwardAimGuard {
+    private static final double FORWARD_PLANE_MARGIN = 0.05D;
+
     public static void enforce() {
         enforce(Minecraft.getInstance().getFrameTime());
     }
@@ -22,90 +28,44 @@ public final class ForwardAimGuard {
 
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
-
         if (player == null || mc.level == null || mc.gameMode == null
                 || mc.options.getCameraType().isFirstPerson()) {
             return;
         }
 
-        /*
-         * Leawind aims along the camera ray. When the camera is allowed inside
-         * terrain, its initial pick can hit a block behind the player.
-         *
-         * Project the player's eye onto that same ray and begin a replacement
-         * pick just beyond the perpendicular plane through the player. This
-         * preserves the visible crosshair direction while making every block
-         * on the camera side of the player irrelevant.
-         */
-        repickForwardOfPlayer(mc, player, partialTick);
-
-        HitResult hit = mc.hitResult;
-        if (hit == null) return;
-
-        Vec3 origin = player.getEyePosition(partialTick);
-        Vec3 targetDir = hit.getLocation().subtract(origin);
-        Vec3 horizontalTarget = new Vec3(targetDir.x, 0.0D, targetDir.z);
-
-        if (horizontalTarget.lengthSqr() < 1.0E-6D) return;
-        horizontalTarget = horizontalTarget.normalize();
-
-        float yaw = player.getYRot();
-        double yawRad = Math.toRadians(yaw);
-        Vec3 forward = new Vec3(-Math.sin(yawRad), 0.0D, Math.cos(yawRad)).normalize();
-
-        double dot = Math.max(-1.0D, Math.min(1.0D, forward.dot(horizontalTarget)));
-        double angle = Math.toDegrees(Math.acos(dot));
-
-        if (angle > ClientConfig.FORWARD_HEMISPHERE_DEGREES.get()) {
-            double distance = Math.max(6.0D, targetDir.length());
-            Vec3 legalPoint = origin.add(forward.scale(distance));
-
-            mc.hitResult = BlockHitResult.miss(
-                    legalPoint,
-                    player.getDirection(),
-                    BlockPos.containing(legalPoint)
-            );
-            mc.crosshairPickEntity = null;
-        }
-    }
-
-    private static void repickForwardOfPlayer(
-            Minecraft mc,
-            LocalPlayer player,
-            float partialTick
-    ) {
         Camera camera = mc.gameRenderer.getMainCamera();
         Vec3 cameraPos = camera.getPosition();
-        Vec3 rayDirection = new Vec3(camera.getLookVector()).normalize();
-        Vec3 eye = player.getEyePosition(partialTick);
+        Vec3 crosshairDirection = new Vec3(camera.getLookVector()).normalize();
+        Vec3 playerEye = player.getEyePosition(partialTick);
 
-        double playerPlaneDistance = eye.subtract(cameraPos).dot(rayDirection);
-        Vec3 start = cameraPos.add(
-                rayDirection.scale(Math.max(0.0D, playerPlaneDistance) + 0.05D)
+        // The second camera-to-player ray supplies the forward cutoff plane.
+        double cameraToPlayerAlongCrosshair =
+                playerEye.subtract(cameraPos).dot(crosshairDirection);
+        double acceptedStartDistance =
+                Math.max(0.0D, cameraToPlayerAlongCrosshair)
+                        + FORWARD_PLANE_MARGIN;
+        Vec3 acceptedStart = cameraPos.add(
+                crosshairDirection.scale(acceptedStartDistance)
+        );
+        Vec3 end = acceptedStart.add(
+                crosshairDirection.scale(mc.gameMode.getPickRange())
         );
 
-        double pickRange = mc.gameMode.getPickRange();
-        Vec3 end = start.add(rayDirection.scale(pickRange));
-
-        /*
-         * Trace blocks directly from the forward plane instead of using
-         * Entity#pick, which always starts at the player's eye.
-         */
-        HitResult blockHit = mc.level.clip(new net.minecraft.world.level.ClipContext(
-                start,
+        HitResult blockHit = mc.level.clip(new ClipContext(
+                acceptedStart,
                 end,
-                net.minecraft.world.level.ClipContext.Block.OUTLINE,
-                net.minecraft.world.level.ClipContext.Fluid.NONE,
+                ClipContext.Block.OUTLINE,
+                ClipContext.Fluid.NONE,
                 player
         ));
 
-        double blockDistanceSqr = start.distanceToSqr(blockHit.getLocation());
-        AABB searchBox = new AABB(start, end).inflate(1.0D);
+        double blockDistanceSqr =
+                acceptedStart.distanceToSqr(blockHit.getLocation());
         EntityHitResult entityHit = ProjectileUtil.getEntityHitResult(
                 player,
-                start,
+                acceptedStart,
                 end,
-                searchBox,
+                new AABB(acceptedStart, end).inflate(1.0D),
                 entity -> !entity.isSpectator()
                         && entity.isPickable()
                         && entity != player,
@@ -113,7 +73,8 @@ public final class ForwardAimGuard {
         );
 
         if (entityHit != null
-                && start.distanceToSqr(entityHit.getLocation()) < blockDistanceSqr) {
+                && acceptedStart.distanceToSqr(entityHit.getLocation())
+                        < blockDistanceSqr) {
             mc.hitResult = entityHit;
             mc.crosshairPickEntity = entityHit.getEntity();
         } else {
