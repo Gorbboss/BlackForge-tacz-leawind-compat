@@ -1,7 +1,6 @@
 package com.blackforge.taczleawind.client;
 
 import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -18,11 +17,6 @@ public final class ClientEvents {
 
         ScopedFirstPersonController.update();
         HiddenBlockManager.update();
-    }
-
-    @SubscribeEvent
-    public static void renderLevelStage(RenderLevelStageEvent event) {
-        ShaderShadowCutawayRenderer.render(event);
     }
 
     private ClientEvents() {}
