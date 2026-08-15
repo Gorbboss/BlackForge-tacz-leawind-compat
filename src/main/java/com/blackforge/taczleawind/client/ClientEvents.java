@@ -16,7 +16,6 @@ public final class ClientEvents {
         }
 
         ScopedFirstPersonController.update();
-        ForwardAimGuard.enforce();
         HiddenBlockManager.update();
     }
 
