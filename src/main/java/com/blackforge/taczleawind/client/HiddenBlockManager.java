@@ -33,12 +33,17 @@ public final class HiddenBlockManager {
      */
     private static final double FIRST_FADE_SHELL_WIDTH = 1.0D;
     private static final double SECOND_FADE_SHELL_WIDTH = 1.0D;
+    private static final int CLOSE_HOLD_TICKS = 30;
+    private static final double OPEN_BLOCKS_PER_TICK = 0.50D;
+    private static final double CLOSE_BLOCKS_PER_TICK = 0.50D;
     private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
             ThreadLocal.withInitial(() -> false);
 
     private static volatile Set<BlockPos> hidden = Set.of();
     private static volatile Map<BlockPos, Float> translucent = Map.of();
     private static volatile ConeVolume cone = ConeVolume.INACTIVE;
+    private static int openingTicks;
+    private static int unobstructedTicks;
 
     public static boolean isHidden(BlockPos pos) {
         return !OVERLAY_RENDERING.get() && hidden.contains(pos);
@@ -72,13 +77,61 @@ public final class HiddenBlockManager {
     }
 
     public static void clear() {
+        clearImmediately(Minecraft.getInstance());
+    }
+
+    private static void clearImmediately(Minecraft mc) {
         cone = ConeVolume.INACTIVE;
         translucent = Map.of();
+        openingTicks = 0;
+        unobstructedTicks = 0;
         Set<BlockPos> old = hidden;
         if (old.isEmpty()) return;
 
         hidden = Set.of();
-        markDirty(Minecraft.getInstance(), old);
+        markDirty(mc, old);
+    }
+
+    private static void closeGradually(Minecraft mc, Vec3 cameraPos) {
+        openingTicks = 0;
+        unobstructedTicks++;
+        if (hidden.isEmpty() || unobstructedTicks <= CLOSE_HOLD_TICKS) {
+            return;
+        }
+
+        double maximumDistance = 0.0D;
+        for (BlockPos pos : hidden) {
+            maximumDistance = Math.max(
+                    maximumDistance,
+                    Math.sqrt(Vec3.atCenterOf(pos).distanceToSqr(cameraPos))
+            );
+        }
+
+        double inwardEdge = maximumDistance - CLOSE_BLOCKS_PER_TICK;
+        HashSet<BlockPos> remaining = new HashSet<>();
+        for (BlockPos pos : hidden) {
+            double distance = Math.sqrt(
+                    Vec3.atCenterOf(pos).distanceToSqr(cameraPos)
+            );
+            if (distance < inwardEdge) {
+                remaining.add(pos);
+            }
+        }
+
+        Set<BlockPos> next = Set.copyOf(remaining);
+        Set<BlockPos> old = hidden;
+        if (!next.equals(old)) {
+            hidden = next;
+            translucent = Map.of();
+            HashSet<BlockPos> changed = new HashSet<>(old);
+            changed.addAll(next);
+            markDirty(mc, changed);
+        }
+
+        if (next.isEmpty()) {
+            cone = ConeVolume.INACTIVE;
+            unobstructedTicks = 0;
+        }
     }
 
     public static void update() {
@@ -86,7 +139,7 @@ public final class HiddenBlockManager {
         if (mc.level == null || mc.player == null
                 || !ClientConfig.HIDE_CAMERA_OBSTRUCTIONS.get()
                 || mc.options.getCameraType().isFirstPerson()) {
-            clear();
+            clearImmediately(mc);
             return;
         }
 
@@ -98,7 +151,7 @@ public final class HiddenBlockManager {
         Vec3 cameraToPlayer = playerPos.subtract(cameraPos);
         double cameraDistance = cameraToPlayer.length();
         if (cameraDistance < 2.05D) {
-            clear();
+            closeGradually(mc, cameraPos);
             return;
         }
 
@@ -114,10 +167,12 @@ public final class HiddenBlockManager {
                 mc.player
         ));
         if (obstruction.getType() != HitResult.Type.BLOCK) {
-            clear();
+            closeGradually(mc, cameraPos);
             return;
         }
 
+        unobstructedTicks = 0;
+        openingTicks++;
         Vec3 axis = cameraToPlayer.scale(1.0D / cameraDistance);
 
         // Start one block behind the camera and stop one block behind the
@@ -146,8 +201,7 @@ public final class HiddenBlockManager {
         int maxY = (int) Math.floor(Math.max(start.y, end.y) + searchRadius);
         int maxZ = (int) Math.floor(Math.max(start.z, end.z) + searchRadius);
 
-        HashSet<BlockPos> nextMutable = new HashSet<>();
-        HashMap<BlockPos, Float> nextTranslucent = new HashMap<>();
+        HashSet<BlockPos> targetMutable = new HashSet<>();
 
         for (int x = minX; x <= maxX; x++) {
             for (int y = minY; y <= maxY; y++) {
@@ -200,15 +254,13 @@ public final class HiddenBlockManager {
                     BlockPos immutable = pos.immutable();
                     if (distance <= innerEdge) {
                         // Fully invisible center.
-                        nextMutable.add(immutable);
+                        targetMutable.add(immutable);
                     } else if (distance <= firstEdge) {
                         // 70% transparent = 30% opacity.
-                        nextMutable.add(immutable);
-                        nextTranslucent.put(immutable, 0.30F);
+                        targetMutable.add(immutable);
                     } else if (distance <= secondEdge) {
                         // 30% transparent = 70% opacity.
-                        nextMutable.add(immutable);
-                        nextTranslucent.put(immutable, 0.70F);
+                        targetMutable.add(immutable);
                     }
                 }
             }
@@ -223,8 +275,22 @@ public final class HiddenBlockManager {
                 (int) Math.floor(mc.player.getY()) + 1
         );
 
-        Set<BlockPos> next = Set.copyOf(nextMutable);
-        Map<BlockPos, Float> nextFade = Map.copyOf(nextTranslucent);
+        // Every former percentage shell is now fully visually transparent.
+        // Reveal the camera block first, then grow by one block every two ticks.
+        double openRadius = 1.0D
+                + Math.max(0, openingTicks - 1) * OPEN_BLOCKS_PER_TICK;
+        HashSet<BlockPos> animated = new HashSet<>();
+        for (BlockPos pos : targetMutable) {
+            double distance = Math.sqrt(
+                    Vec3.atCenterOf(pos).distanceToSqr(cameraPos)
+            );
+            if (distance <= openRadius) {
+                animated.add(pos);
+            }
+        }
+
+        Set<BlockPos> next = Set.copyOf(animated);
+        Map<BlockPos, Float> nextFade = Map.of();
         Set<BlockPos> old = hidden;
 
         if (!next.equals(old)) {
