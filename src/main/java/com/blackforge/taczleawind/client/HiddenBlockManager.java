@@ -11,7 +11,6 @@ import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.decoration.Painting;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.RenderShape;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
@@ -53,23 +52,6 @@ public final class HiddenBlockManager {
         return translucent;
     }
 
-    public static CameraBoxRenderData cameraBoxRenderData() {
-        ConeVolume current = cone;
-        Minecraft mc = Minecraft.getInstance();
-        if (current.length <= 0.0D || mc.level == null) {
-            return CameraBoxRenderData.INACTIVE;
-        }
-
-        Vec3 camera = mc.gameRenderer.getMainCamera().getPosition();
-        Vec3 forward = current.direction.normalize();
-        Vec3 helper = Math.abs(forward.y) < 0.9D
-                ? new Vec3(0.0D, 1.0D, 0.0D)
-                : new Vec3(1.0D, 0.0D, 0.0D);
-        Vec3 right = forward.cross(helper).normalize();
-        Vec3 up = right.cross(forward).normalize();
-        return new CameraBoxRenderData(camera, forward, right, up, true);
-    }
-
     public static void beginOverlayRender() {
         OVERLAY_RENDERING.set(true);
     }
@@ -91,7 +73,13 @@ public final class HiddenBlockManager {
 
     public static void clear() {
         cone = ConeVolume.INACTIVE;
-        transitionOpacity(Map.of());
+        Map<BlockPos, Float> oldTranslucent = translucent;
+        Set<BlockPos> old = hidden;
+        translucent = Map.of();
+        hidden = Set.of();
+        if (!old.isEmpty() || !oldTranslucent.isEmpty()) {
+            markDirty(Minecraft.getInstance(), old);
+        }
     }
 
     public static void update() {
@@ -209,20 +197,11 @@ public final class HiddenBlockManager {
                         nextMutable.add(immutable);
                         nextTranslucent.put(immutable, 0.0F);
                     } else if (distance <= firstEdge) {
-                        // Smoothly increase from fully invisible to 30% opaque.
-                        float progress = (float) ((distance - innerEdge)
-                                / FIRST_FADE_SHELL_WIDTH);
                         nextMutable.add(immutable);
-                        nextTranslucent.put(immutable, 0.30F * progress);
+                        nextTranslucent.put(immutable, 0.30F);
                     } else if (distance <= secondEdge) {
-                        // Smoothly increase from 30% to 70% opacity.
-                        float progress = (float) ((distance - firstEdge)
-                                / SECOND_FADE_SHELL_WIDTH);
                         nextMutable.add(immutable);
-                        nextTranslucent.put(
-                                immutable,
-                                0.30F + 0.40F * progress
-                        );
+                        nextTranslucent.put(immutable, 0.70F);
                     }
                 }
             }
@@ -237,37 +216,9 @@ public final class HiddenBlockManager {
                 (int) Math.floor(mc.player.getY()) + 1
         );
 
-        transitionOpacity(Map.copyOf(nextTranslucent));
-    }
-
-    /*
-     * Every block owns its transition. New/remaining blocks approach their
-     * spatial shell opacity; blocks which leave the cutaway remain suppressed
-     * and re-rendered until they smoothly return to fully opaque.
-     */
-    private static void transitionOpacity(Map<BlockPos, Float> targets) {
-        Minecraft mc = Minecraft.getInstance();
-        HashSet<BlockPos> positions = new HashSet<>(translucent.keySet());
-        positions.addAll(targets.keySet());
-
-        HashMap<BlockPos, Float> nextOpacity = new HashMap<>();
-        final float step = 0.12F;
-        for (BlockPos pos : positions) {
-            float current = translucent.getOrDefault(pos, 1.0F);
-            float target = targets.getOrDefault(pos, 1.0F);
-            float difference = target - current;
-            float next = Math.abs(difference) <= step
-                    ? target
-                    : current + Math.copySign(step, difference);
-
-            if (targets.containsKey(pos) || next < 0.999F) {
-                nextOpacity.put(pos, Math.max(0.0F, Math.min(1.0F, next)));
-            }
-        }
-
         Set<BlockPos> old = hidden;
-        Set<BlockPos> nextHidden = Set.copyOf(nextOpacity.keySet());
-        translucent = Map.copyOf(nextOpacity);
+        Set<BlockPos> nextHidden = Set.copyOf(nextMutable);
+        translucent = Map.copyOf(nextTranslucent);
         hidden = nextHidden;
 
         if (!old.equals(nextHidden)) {
@@ -344,19 +295,6 @@ public final class HiddenBlockManager {
                 SectionPos.blockToSectionCoord(pos.getY()),
                 SectionPos.blockToSectionCoord(pos.getZ())
         ));
-    }
-
-    public record CameraBoxRenderData(
-            Vec3 camera,
-            Vec3 forward,
-            Vec3 right,
-            Vec3 up,
-            boolean active
-    ) {
-        private static final CameraBoxRenderData INACTIVE =
-                new CameraBoxRenderData(
-                        Vec3.ZERO, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO, false
-                );
     }
 
     private record ConeVolume(
