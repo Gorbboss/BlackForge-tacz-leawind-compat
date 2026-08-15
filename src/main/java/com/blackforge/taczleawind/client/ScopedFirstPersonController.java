@@ -15,7 +15,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ScopedFirstPersonController {
     private static final float FIRST_PERSON_MAGNIFICATION_THRESHOLD = 2.5F;
-    private static final float FIRST_PERSON_AIM_PROGRESS_THRESHOLD = 0.65F;
+    private static final float FULL_AIM_PROGRESS = 0.999F;
+    private static final double EXTRA_ADS_DURATION_FRACTION = 0.10D;
+    private static int aimingTicks;
+    private static int ticksAtFullAim = -1;
     private static final Map<Class<?>, Method> AIM_METHODS = new ConcurrentHashMap<>();
     private static final Map<Class<?>, Method> ZOOM_METHODS = new ConcurrentHashMap<>();
     private static final Map<Class<?>, Method> AIM_PROGRESS_METHODS = new ConcurrentHashMap<>();
@@ -27,19 +30,44 @@ public final class ScopedFirstPersonController {
 
         if (player == null
                 || mc.options.getCameraType() != CameraType.THIRD_PERSON_BACK) {
-            active = false;
+            blackforge$reset();
             return;
         }
 
         ItemStack stack = player.getMainHandItem();
-        active = blackforge$isAiming(player)
-                && blackforge$getAimingZoom(stack) > FIRST_PERSON_MAGNIFICATION_THRESHOLD
-                && blackforge$getAimingProgress(player)
-                        >= FIRST_PERSON_AIM_PROGRESS_THRESHOLD;
+        boolean eligible = blackforge$isAiming(player)
+                && blackforge$getAimingZoom(stack) > FIRST_PERSON_MAGNIFICATION_THRESHOLD;
+        if (!eligible) {
+            blackforge$reset();
+            return;
+        }
+
+        aimingTicks++;
+        float progress = blackforge$getAimingProgress(player);
+        if (progress < FULL_AIM_PROGRESS) {
+            active = false;
+            return;
+        }
+
+        if (ticksAtFullAim < 0) {
+            ticksAtFullAim = aimingTicks;
+        }
+
+        int extraTicks = Math.max(
+                1,
+                (int) Math.ceil(ticksAtFullAim * EXTRA_ADS_DURATION_FRACTION)
+        );
+        active = aimingTicks >= ticksAtFullAim + extraTicks;
     }
 
     public static boolean isActive() {
         return active;
+    }
+
+    private static void blackforge$reset() {
+        active = false;
+        aimingTicks = 0;
+        ticksAtFullAim = -1;
     }
 
     private static boolean blackforge$isAiming(LocalPlayer player) {
