@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ScopedFirstPersonController {
     private static final float FIRST_PERSON_MAGNIFICATION_THRESHOLD = 2.5F;
-    private static final float FIRST_PERSON_AIM_PROGRESS_THRESHOLD = 1.00F;
+    private static final float FIRST_PERSON_AIM_PROGRESS_THRESHOLD = 0.50F;
     private static final Map<Class<?>, Method> AIM_METHODS = new ConcurrentHashMap<>();
     private static final Map<Class<?>, Method> ZOOM_METHODS = new ConcurrentHashMap<>();
     private static final Map<Class<?>, Method> AIM_PROGRESS_METHODS = new ConcurrentHashMap<>();
