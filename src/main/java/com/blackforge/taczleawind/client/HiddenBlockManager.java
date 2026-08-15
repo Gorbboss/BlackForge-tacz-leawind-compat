@@ -33,8 +33,7 @@ public final class HiddenBlockManager {
      */
     private static final double FIRST_FADE_SHELL_WIDTH = 1.0D;
     private static final double SECOND_FADE_SHELL_WIDTH = 1.0D;
-    private static final int CLOSE_HOLD_TICKS = 30;
-    private static final double OPEN_BLOCKS_PER_TICK = 0.50D;
+    private static final int OPEN_DURATION_TICKS = 6;
     private static final double CLOSE_BLOCKS_PER_TICK = 0.50D;
     private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
             ThreadLocal.withInitial(() -> false);
@@ -43,7 +42,6 @@ public final class HiddenBlockManager {
     private static volatile Map<BlockPos, Float> translucent = Map.of();
     private static volatile ConeVolume cone = ConeVolume.INACTIVE;
     private static int openingTicks;
-    private static int unobstructedTicks;
 
     public static boolean isHidden(BlockPos pos) {
         return !OVERLAY_RENDERING.get() && hidden.contains(pos);
@@ -84,7 +82,6 @@ public final class HiddenBlockManager {
         cone = ConeVolume.INACTIVE;
         translucent = Map.of();
         openingTicks = 0;
-        unobstructedTicks = 0;
         Set<BlockPos> old = hidden;
         if (old.isEmpty()) return;
 
@@ -94,8 +91,7 @@ public final class HiddenBlockManager {
 
     private static void closeGradually(Minecraft mc, Vec3 cameraPos) {
         openingTicks = 0;
-        unobstructedTicks++;
-        if (hidden.isEmpty() || unobstructedTicks <= CLOSE_HOLD_TICKS) {
+        if (hidden.isEmpty()) {
             return;
         }
 
@@ -124,13 +120,15 @@ public final class HiddenBlockManager {
             hidden = next;
             translucent = Map.of();
             HashSet<BlockPos> changed = new HashSet<>(old);
-            changed.addAll(next);
+            changed.removeAll(next);
+            HashSet<BlockPos> newlyChanged = new HashSet<>(next);
+            newlyChanged.removeAll(old);
+            changed.addAll(newlyChanged);
             markDirty(mc, changed);
         }
 
         if (next.isEmpty()) {
             cone = ConeVolume.INACTIVE;
-            unobstructedTicks = 0;
         }
     }
 
@@ -171,7 +169,6 @@ public final class HiddenBlockManager {
             return;
         }
 
-        unobstructedTicks = 0;
         openingTicks++;
         Vec3 axis = cameraToPlayer.scale(1.0D / cameraDistance);
 
@@ -276,9 +273,21 @@ public final class HiddenBlockManager {
         );
 
         // Every former percentage shell is now fully visually transparent.
-        // Reveal the camera block first, then grow by one block every two ticks.
-        double openRadius = 1.0D
-                + Math.max(0, openingTicks - 1) * OPEN_BLOCKS_PER_TICK;
+        // Ease out: a large immediate opening that slows near the outer edge.
+        double maximumTargetDistance = 1.0D;
+        for (BlockPos pos : targetMutable) {
+            maximumTargetDistance = Math.max(
+                    maximumTargetDistance,
+                    Math.sqrt(Vec3.atCenterOf(pos).distanceToSqr(cameraPos))
+            );
+        }
+        double progress = Math.min(
+                1.0D,
+                openingTicks / (double) OPEN_DURATION_TICKS
+        );
+        double remaining = 1.0D - progress;
+        double easedProgress = 1.0D - remaining * remaining * remaining;
+        double openRadius = Math.max(1.0D, maximumTargetDistance * easedProgress);
         HashSet<BlockPos> animated = new HashSet<>();
         for (BlockPos pos : targetMutable) {
             double distance = Math.sqrt(
@@ -295,7 +304,10 @@ public final class HiddenBlockManager {
 
         if (!next.equals(old)) {
             HashSet<BlockPos> changed = new HashSet<>(old);
-            changed.addAll(next);
+            changed.removeAll(next);
+            HashSet<BlockPos> newlyChanged = new HashSet<>(next);
+            newlyChanged.removeAll(old);
+            changed.addAll(newlyChanged);
             hidden = next;
             translucent = nextFade;
             markDirty(mc, changed);
