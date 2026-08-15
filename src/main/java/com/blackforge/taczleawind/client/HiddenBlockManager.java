@@ -33,6 +33,7 @@ public final class HiddenBlockManager {
      */
     private static final double FIRST_FADE_SHELL_WIDTH = 1.0D;
     private static final double SECOND_FADE_SHELL_WIDTH = 1.0D;
+    private static final double THIRD_FADE_SHELL_WIDTH = 1.0D;
     private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
             ThreadLocal.withInitial(() -> false);
 
@@ -137,6 +138,7 @@ public final class HiddenBlockManager {
         double searchRadius = maximumRadius
                 + FIRST_FADE_SHELL_WIDTH
                 + SECOND_FADE_SHELL_WIDTH
+                + THIRD_FADE_SHELL_WIDTH
                 + blockAllowance;
 
         int minX = (int) Math.floor(Math.min(start.x, end.x) - searchRadius);
@@ -196,6 +198,7 @@ public final class HiddenBlockManager {
                     double innerEdge = radius + blockAllowance;
                     double firstEdge = innerEdge + FIRST_FADE_SHELL_WIDTH;
                     double secondEdge = firstEdge + SECOND_FADE_SHELL_WIDTH;
+                    double thirdEdge = secondEdge + THIRD_FADE_SHELL_WIDTH;
 
                     BlockPos immutable = pos.immutable();
                     if (distance <= innerEdge) {
@@ -209,6 +212,10 @@ public final class HiddenBlockManager {
                         // 30% transparent = 70% opacity.
                         nextMutable.add(immutable);
                         nextTranslucent.put(immutable, 0.70F);
+                    } else if (distance <= thirdEdge) {
+                        // Added outer shell: 50% transparent = 50% opacity.
+                        nextMutable.add(immutable);
+                        nextTranslucent.put(immutable, 0.50F);
                     }
                 }
             }
