@@ -6,6 +6,10 @@ on:
     branches:
       - main
       - master
+  pull_request:
+    branches:
+      - main
+      - master
 
 jobs:
   build:
@@ -30,7 +34,9 @@ jobs:
         run: gradle --version
 
       - name: Build mod
-        run: gradle build --stacktrace
+        run: |
+          set -o pipefail
+          gradle build --stacktrace 2>&1 | tee build.log
 
       - name: List produced JARs
         run: |
@@ -43,3 +49,11 @@ jobs:
           name: BlackForge-TaCZ-Leawind-Camera-Compat
           path: build/libs/*.jar
           if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
