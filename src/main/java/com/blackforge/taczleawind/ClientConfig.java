@@ -10,6 +10,7 @@ public final class ClientConfig {
     public static final ForgeConfigSpec.BooleanValue HIDE_CAMERA_OBSTRUCTIONS;
     public static final ForgeConfigSpec.BooleanValue FORWARD_ONLY_TARGETING;
     public static final ForgeConfigSpec.DoubleValue HIDE_CORRIDOR_RADIUS;
+    public static final ForgeConfigSpec.DoubleValue MAX_THIRD_PERSON_DISTANCE;
     public static final ForgeConfigSpec.DoubleValue FORWARD_HEMISPHERE_DEGREES;
 
     static {
@@ -25,17 +26,21 @@ public final class ClientConfig {
                 .define("disableCameraCollision", true);
 
         HIDE_CAMERA_OBSTRUCTIONS = b
-                .comment("Hide only blocks intersecting the camera-to-player corridor.")
+                .comment("Hide blocks inside the camera-to-player obstruction tube.")
                 .define("hideCameraObstructions", true);
 
         HIDE_CORRIDOR_RADIUS = b
-                .comment("Approximate radius in blocks around the camera-to-player line to hide.")
-                .defineInRange("hideCorridorRadius", 0.32D, 0.05D, 0.75D);
+                .comment("Radius in blocks around the camera-to-player line. 2.5 = five blocks wide.")
+                .defineInRange("hideCorridorRadius", 2.5D, 2.5D, 5.0D);
+
+        MAX_THIRD_PERSON_DISTANCE = b
+                .comment("Maximum Leawind third-person camera distance in blocks.")
+                .defineInRange("maximumThirdPersonDistance", 16.0D, 4.0D, 32.0D);
         b.pop();
 
         b.push("aiming");
         FORWARD_ONLY_TARGETING = b
-                .comment("Reject crosshair targets behind the character.")
+                .comment("Ignore camera-side obstructions and reject targets behind the character.")
                 .define("forwardOnlyTargeting", true);
 
         FORWARD_HEMISPHERE_DEGREES = b

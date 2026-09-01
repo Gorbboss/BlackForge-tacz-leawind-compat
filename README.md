@@ -1,5 +1,15 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
+## BlackForge v0.2.0 (build #55 baseline)
+
+- Preserves the confirmed working six-tick eased 70-degree camera cutaway.
+- Keeps the cone center completely invisible.
+- Re-renders the first edge shell at 30% opacity and the second at 70% opacity
+  through Minecraft's translucent block pass.
+- Expands Leawind's adjustable third-person camera distance to a configurable
+  maximum of 16 blocks by default (`maximumThirdPersonDistance`).
+- Does not restore the removed shader-shadow renderer.
+
 Forge 1.20.1 compatibility fork based conceptually on
 `khanhtimn/TACZ-LeawindTPS-Compat` (GPL-3.0).
 
