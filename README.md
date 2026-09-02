@@ -1,13 +1,14 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
-## BlackForge v0.2.0 (build #55 baseline)
+## BlackForge v0.2.1 (build #55 baseline)
 
-- Preserves the confirmed working six-tick eased 70-degree camera cutaway.
-- Keeps the cone center completely invisible.
-- Re-renders the first edge shell at 30% opacity and the second at 70% opacity
-  through Minecraft's translucent block pass.
-- Expands Leawind's adjustable third-person camera distance to a configurable
-  maximum of 16 blocks by default (`maximumThirdPersonDistance`).
+- Preserves the confirmed working six-tick eased camera cutaway activation.
+- Keeps the capped tube center completely invisible. It begins one block wide,
+  tapers to a narrow tube, and tapers back down near the player.
+- Smoothly increases opacity across the surrounding two-block fade and submits
+  it before translucent terrain so Oculus can process it like glass.
+- Hard-limits Leawind's maximum third-person zoom to 16 blocks. This limit is
+  intentionally not configurable.
 - Does not restore the removed shader-shadow renderer.
 
 Forge 1.20.1 compatibility fork based conceptually on

@@ -14,10 +14,17 @@ import net.minecraftforge.client.event.RenderLevelStageEvent;
 
 import java.util.Map;
 
-/** Re-renders the two cutaway edge shells through the translucent pass. */
+/** Re-renders the cutaway fade while Oculus still owns the world buffers. */
 public final class TranslucentCutawayRenderer {
     public static void render(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
+        /*
+         * AFTER_TRANSLUCENT_BLOCKS is too late for several Oculus pipelines:
+         * their terrain G-buffer has already been closed. Submit and flush the
+         * translucent block RenderType immediately before Minecraft renders
+         * its native translucent terrain, so Oculus handles these vertices by
+         * the same shader-aware world pass it uses for glass.
+         */
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_CUTOUT_MIPPED_BLOCKS) return;
 
         Map<BlockPos, Float> blocks = HiddenBlockManager.translucentSnapshot();
         if (blocks.isEmpty()) return;

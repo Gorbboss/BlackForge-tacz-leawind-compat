@@ -24,8 +24,10 @@ import java.util.Set;
 public final class HiddenBlockManager {
     private static final double CAMERA_APEX_BACK_OFFSET = 1.0D;
     private static final double PLAYER_END_BACK_OFFSET = 1.0D;
-    private static final double CONE_HALF_ANGLE_RADIANS = Math.toRadians(35.0D);
-    private static final double PLAYER_END_RADIUS = 1.5D;
+    // Half a block in radius gives a one-block-wide opening at each end.
+    private static final double END_RADIUS = 0.5D;
+    private static final double TUBE_RADIUS = 1.5D;
+    private static final double MAX_TAPER_LENGTH = 3.0D;
 
     /*
      * Embeddium builds chunk meshes on worker threads. Always publish a
@@ -184,14 +186,10 @@ public final class HiddenBlockManager {
         Vec3 shapeAxis = end.subtract(start);
         double shapeLength = shapeAxis.length();
         Vec3 shapeDirection = shapeAxis.scale(1.0D / shapeLength);
-        double midpoint = shapeLength * 0.5D;
-
-        // 70 degrees is the complete opening angle, hence tan(35 degrees).
-        double maximumRadius = Math.tan(CONE_HALF_ANGLE_RADIANS) * midpoint;
-        maximumRadius = Math.max(maximumRadius, PLAYER_END_RADIUS);
+        double taperLength = Math.min(MAX_TAPER_LENGTH, shapeLength * 0.25D);
 
         double blockAllowance = Math.sqrt(3.0D) * 0.5D;
-        double searchRadius = maximumRadius
+        double searchRadius = TUBE_RADIUS
                 + FIRST_FADE_SHELL_WIDTH
                 + SECOND_FADE_SHELL_WIDTH
                 + blockAllowance;
@@ -233,39 +231,33 @@ public final class HiddenBlockManager {
                         continue;
                     }
 
-                    double radius;
-                    if (axialDistance <= midpoint) {
-                        radius = Math.tan(CONE_HALF_ANGLE_RADIANS)
-                                * axialDistance;
-                    } else {
-                        double closingProgress =
-                                (axialDistance - midpoint)
-                                        / (shapeLength - midpoint);
-                        radius = maximumRadius
-                                + (PLAYER_END_RADIUS - maximumRadius)
-                                * closingProgress;
-                    }
+                    double radius = radiusAt(
+                            axialDistance,
+                            shapeLength,
+                            taperLength
+                    );
 
                     Vec3 nearest = start.add(
                             shapeDirection.scale(axialDistance)
                     );
                     double distance = Math.sqrt(center.distanceToSqr(nearest));
                     double innerEdge = radius + blockAllowance;
-                    double firstEdge = innerEdge + FIRST_FADE_SHELL_WIDTH;
-                    double secondEdge = firstEdge + SECOND_FADE_SHELL_WIDTH;
+                    double fadeWidth = FIRST_FADE_SHELL_WIDTH
+                            + SECOND_FADE_SHELL_WIDTH;
+                    double fadeEdge = innerEdge + fadeWidth;
 
                     BlockPos immutable = pos.immutable();
                     if (distance <= innerEdge) {
                         // Fully invisible center.
                         targetMutable.add(immutable);
-                    } else if (distance <= firstEdge) {
-                        // 70% transparent = 30% opacity.
+                    } else if (distance <= fadeEdge) {
+                        // Smoothly blend from the invisible center back to
+                        // normal terrain across the complete two-block edge.
+                        double progress = (distance - innerEdge) / fadeWidth;
+                        double smooth = progress * progress * (3.0D - 2.0D * progress);
+                        float opacity = (float) (0.10D + 0.85D * smooth);
                         targetMutable.add(immutable);
-                        targetTranslucent.put(immutable, 0.30F);
-                    } else if (distance <= secondEdge) {
-                        // 30% transparent = 70% opacity.
-                        targetMutable.add(immutable);
-                        targetTranslucent.put(immutable, 0.70F);
+                        targetTranslucent.put(immutable, opacity);
                     }
                 }
             }
@@ -275,8 +267,7 @@ public final class HiddenBlockManager {
                 start,
                 shapeDirection,
                 shapeLength,
-                midpoint,
-                maximumRadius,
+                taperLength,
                 (int) Math.floor(mc.player.getY()) + 1
         );
 
@@ -365,12 +356,11 @@ public final class HiddenBlockManager {
             Vec3 start,
             Vec3 direction,
             double length,
-            double midpoint,
-            double maximumRadius,
+            double taperLength,
             int minimumY
     ) {
         private static final ConeVolume INACTIVE =
-                new ConeVolume(Vec3.ZERO, Vec3.ZERO, 0.0D, 0.0D, 0.0D, Integer.MAX_VALUE);
+                new ConeVolume(Vec3.ZERO, Vec3.ZERO, 0.0D, 0.0D, Integer.MAX_VALUE);
 
         private boolean contains(AABB box) {
             if (length <= 0.0D || box.maxY < minimumY) return false;
@@ -379,14 +369,7 @@ public final class HiddenBlockManager {
             double axial = center.subtract(start).dot(direction);
             if (axial < 0.0D || axial > length) return false;
 
-            double radius;
-            if (axial <= midpoint) {
-                radius = Math.tan(CONE_HALF_ANGLE_RADIANS) * axial;
-            } else {
-                double progress = (axial - midpoint) / (length - midpoint);
-                radius = maximumRadius
-                        + (PLAYER_END_RADIUS - maximumRadius) * progress;
-            }
+            double radius = radiusAt(axial, length, taperLength);
 
             double entityAllowance = 0.5D * Math.sqrt(
                     box.getXsize() * box.getXsize()
@@ -397,6 +380,26 @@ public final class HiddenBlockManager {
             double accepted = radius + entityAllowance;
             return center.distanceToSqr(nearest) <= accepted * accepted;
         }
+    }
+
+    private static double radiusAt(
+            double axialDistance,
+            double shapeLength,
+            double taperLength
+    ) {
+        if (taperLength <= 0.0D) return END_RADIUS;
+        if (axialDistance < taperLength) {
+            return END_RADIUS
+                    + (TUBE_RADIUS - END_RADIUS)
+                    * (axialDistance / taperLength);
+        }
+        double closingStart = shapeLength - taperLength;
+        if (axialDistance > closingStart) {
+            return TUBE_RADIUS
+                    + (END_RADIUS - TUBE_RADIUS)
+                    * ((axialDistance - closingStart) / taperLength);
+        }
+        return TUBE_RADIUS;
     }
 
     private HiddenBlockManager() {}
