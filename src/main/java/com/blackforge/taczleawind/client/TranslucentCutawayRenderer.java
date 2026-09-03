@@ -9,6 +9,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 
@@ -24,8 +25,10 @@ public final class TranslucentCutawayRenderer {
          * its native translucent terrain, so Oculus handles these vertices by
          * the same shader-aware world pass it uses for glass.
          */
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_CUTOUT_MIPPED_BLOCKS_BLOCKS) return;
-        
+        // Forge 1.20.1 exposes this stage with the duplicated BLOCKS suffix.
+        if (event.getStage()
+                != RenderLevelStageEvent.Stage.AFTER_CUTOUT_MIPPED_BLOCKS_BLOCKS) return;
+
         Map<BlockPos, Float> blocks = HiddenBlockManager.translucentSnapshot();
         if (blocks.isEmpty()) return;
 
@@ -35,7 +38,10 @@ public final class TranslucentCutawayRenderer {
         Camera camera = mc.gameRenderer.getMainCamera();
         PoseStack poseStack = event.getPoseStack();
         MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
-        VertexConsumer translucentBuffer = buffers.getBuffer(RenderType.translucent());
+        RenderType shaderAwareTranslucent = RenderType.entityTranslucent(
+                InventoryMenu.BLOCK_ATLAS
+        );
+        VertexConsumer translucentBuffer = buffers.getBuffer(shaderAwareTranslucent);
         BlockRenderDispatcher dispatcher = mc.getBlockRenderer();
         RandomSource random = RandomSource.create();
 
@@ -68,7 +74,7 @@ public final class TranslucentCutawayRenderer {
             HiddenBlockManager.endOverlayRender();
         }
 
-        buffers.endBatch(RenderType.translucent());
+        buffers.endBatch(shaderAwareTranslucent);
     }
 
     private static final class AlphaVertexConsumer implements VertexConsumer {

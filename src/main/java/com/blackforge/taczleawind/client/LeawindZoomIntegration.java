@@ -3,14 +3,14 @@ package com.blackforge.taczleawind.client;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-/** Hard-limits Leawind 2.2.0 to an observed 16-block camera distance. */
+/** Hard-limits Leawind 2.2.0 to an observed 12-block camera distance. */
 final class LeawindZoomIntegration {
     /*
      * Leawind's camera_distance_max is a distance factor, not a block count.
-     * With the player's size multiplier used by Leawind, 8.0 is the 16-block
-     * ceiling (the previous value of 16.0 produced about 32 blocks).
+     * With the player's size multiplier used by Leawind, 6.0 is the 12-block
+     * ceiling (a value of 8.0 produced about 16 blocks).
      */
-    private static final double LEAWIND_MAX_DISTANCE_FACTOR = 8.0D;
+    private static final double LEAWIND_MAX_DISTANCE_FACTOR = 6.0D;
     private static Object configuredInstance;
     private static boolean unavailable;
 

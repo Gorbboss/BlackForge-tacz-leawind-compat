@@ -1,13 +1,16 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
-## BlackForge v0.2.1 (build #55 baseline)
+## BlackForge v0.3.0 (build #55 baseline)
 
 - Preserves the confirmed working six-tick eased camera cutaway activation.
 - Keeps the capped tube center completely invisible. It begins one block wide,
   tapers to a narrow tube, and tapers back down near the player.
-- Smoothly increases opacity across the surrounding two-block fade and submits
-  it before translucent terrain so Oculus can process it like glass.
-- Hard-limits Leawind's maximum third-person zoom to 16 blocks. This limit is
+- Activates from five obstruction rays: center, left, right, top, and bottom.
+- Fades the center line in 0.25 seconds, the four adjacent lines in 0.5 seconds,
+  and the rest of the 3x3 opening in 1 second.
+- Smoothly increases opacity across three surrounding rings and submits those
+  blocks through the shader-aware translucent-entity path used by Oculus.
+- Hard-limits Leawind's maximum third-person zoom to 12 blocks. This limit is
   intentionally not configurable.
 - Does not restore the removed shader-shadow renderer.
 

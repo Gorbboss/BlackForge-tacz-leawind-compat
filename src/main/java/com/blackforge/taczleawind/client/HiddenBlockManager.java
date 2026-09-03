@@ -33,17 +33,17 @@ public final class HiddenBlockManager {
      * Embeddium builds chunk meshes on worker threads. Always publish a
      * complete immutable snapshot.
      */
-    private static final double FIRST_FADE_SHELL_WIDTH = 1.0D;
-    private static final double SECOND_FADE_SHELL_WIDTH = 1.0D;
-    private static final int OPEN_DURATION_TICKS = 6;
-    private static final double CLOSE_BLOCKS_PER_TICK = 0.50D;
+    private static final double OUTER_FADE_WIDTH = 3.0D;
+    private static final double TRIGGER_RAY_OFFSET = 0.85D;
+    private static final int CENTER_FADE_TICKS = 5;   // 0.25 seconds
+    private static final int CROSS_FADE_TICKS = 10;  // 0.50 seconds
+    private static final int FULL_FADE_TICKS = 20;   // 1.00 second
     private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
             ThreadLocal.withInitial(() -> false);
 
     private static volatile Set<BlockPos> hidden = Set.of();
     private static volatile Map<BlockPos, Float> translucent = Map.of();
     private static volatile ConeVolume cone = ConeVolume.INACTIVE;
-    private static int openingTicks;
 
     public static boolean isHidden(BlockPos pos) {
         return !OVERLAY_RENDERING.get() && hidden.contains(pos);
@@ -83,7 +83,6 @@ public final class HiddenBlockManager {
     private static void clearImmediately(Minecraft mc) {
         cone = ConeVolume.INACTIVE;
         translucent = Map.of();
-        openingTicks = 0;
         Set<BlockPos> old = hidden;
         if (old.isEmpty()) return;
 
@@ -91,33 +90,19 @@ public final class HiddenBlockManager {
         markDirty(mc, old);
     }
 
-    private static void closeGradually(Minecraft mc, Vec3 cameraPos) {
-        openingTicks = 0;
+    private static void closeGradually(Minecraft mc) {
         if (hidden.isEmpty()) {
             return;
         }
 
-        double maximumDistance = 0.0D;
-        for (BlockPos pos : hidden) {
-            maximumDistance = Math.max(
-                    maximumDistance,
-                    Math.sqrt(Vec3.atCenterOf(pos).distanceToSqr(cameraPos))
-            );
-        }
-
-        double inwardEdge = maximumDistance - CLOSE_BLOCKS_PER_TICK;
         HashSet<BlockPos> remaining = new HashSet<>();
         HashMap<BlockPos, Float> remainingTranslucent = new HashMap<>();
         for (BlockPos pos : hidden) {
-            double distance = Math.sqrt(
-                    Vec3.atCenterOf(pos).distanceToSqr(cameraPos)
-            );
-            if (distance < inwardEdge) {
+            float previous = translucent.getOrDefault(pos, 0.0F);
+            float opacity = Math.min(1.0F, previous + 1.0F / FULL_FADE_TICKS);
+            if (opacity < 0.999F) {
                 remaining.add(pos);
-                Float opacity = translucent.get(pos);
-                if (opacity != null) {
-                    remainingTranslucent.put(pos, opacity);
-                }
+                remainingTranslucent.put(pos, opacity);
             }
         }
 
@@ -132,6 +117,8 @@ public final class HiddenBlockManager {
             newlyChanged.removeAll(old);
             changed.addAll(newlyChanged);
             markDirty(mc, changed);
+        } else {
+            translucent = Map.copyOf(remainingTranslucent);
         }
 
         if (next.isEmpty()) {
@@ -156,28 +143,22 @@ public final class HiddenBlockManager {
         Vec3 cameraToPlayer = playerPos.subtract(cameraPos);
         double cameraDistance = cameraToPlayer.length();
         if (cameraDistance < 2.05D) {
-            closeGradually(mc, cameraPos);
+            closeGradually(mc);
             return;
         }
+
+        Vec3 axis = cameraToPlayer.scale(1.0D / cameraDistance);
+        Vec3 right = cameraRight(axis);
+        Vec3 up = right.cross(axis).normalize();
 
         /*
-         * Do not create a cutaway in open space. OUTLINE includes rendered
-         * non-solid models such as grass, cobwebs, doors and trapdoors.
+         * Test the center plus the four cardinal edges of the camera opening.
+         * A wall clipping any one of these rays activates the cutaway early.
          */
-        HitResult obstruction = mc.level.clip(new ClipContext(
-                cameraPos,
-                playerPos,
-                ClipContext.Block.OUTLINE,
-                ClipContext.Fluid.NONE,
-                mc.player
-        ));
-        if (obstruction.getType() != HitResult.Type.BLOCK) {
-            closeGradually(mc, cameraPos);
+        if (!hasCrossObstruction(mc, cameraPos, playerPos, right, up)) {
+            closeGradually(mc);
             return;
         }
-
-        openingTicks++;
-        Vec3 axis = cameraToPlayer.scale(1.0D / cameraDistance);
 
         // Start one block behind the camera and stop one block behind the
         // character, on the camera-facing side.
@@ -190,8 +171,7 @@ public final class HiddenBlockManager {
 
         double blockAllowance = Math.sqrt(3.0D) * 0.5D;
         double searchRadius = TUBE_RADIUS
-                + FIRST_FADE_SHELL_WIDTH
-                + SECOND_FADE_SHELL_WIDTH
+                + OUTER_FADE_WIDTH
                 + blockAllowance;
 
         int minX = (int) Math.floor(Math.min(start.x, end.x) - searchRadius);
@@ -203,6 +183,7 @@ public final class HiddenBlockManager {
 
         HashSet<BlockPos> targetMutable = new HashSet<>();
         HashMap<BlockPos, Float> targetTranslucent = new HashMap<>();
+        HashMap<BlockPos, Integer> targetFadeTicks = new HashMap<>();
 
         for (int x = minX; x <= maxX; x++) {
             for (int y = minY; y <= maxY; y++) {
@@ -242,22 +223,25 @@ public final class HiddenBlockManager {
                     );
                     double distance = Math.sqrt(center.distanceToSqr(nearest));
                     double innerEdge = radius + blockAllowance;
-                    double fadeWidth = FIRST_FADE_SHELL_WIDTH
-                            + SECOND_FADE_SHELL_WIDTH;
-                    double fadeEdge = innerEdge + fadeWidth;
+                    double fadeEdge = innerEdge + OUTER_FADE_WIDTH;
 
                     BlockPos immutable = pos.immutable();
                     if (distance <= innerEdge) {
                         // Fully invisible center.
                         targetMutable.add(immutable);
+                        targetTranslucent.put(immutable, 0.0F);
+                        targetFadeTicks.put(
+                                immutable,
+                                fadeTicksFor(center.subtract(nearest), right, up)
+                        );
                     } else if (distance <= fadeEdge) {
-                        // Smoothly blend from the invisible center back to
-                        // normal terrain across the complete two-block edge.
-                        double progress = (distance - innerEdge) / fadeWidth;
+                        // Smoothly blend from zero visibility at the cutaway
+                        // edge to full visibility across three outer rings.
+                        double progress = (distance - innerEdge) / OUTER_FADE_WIDTH;
                         double smooth = progress * progress * (3.0D - 2.0D * progress);
-                        float opacity = (float) (0.10D + 0.85D * smooth);
                         targetMutable.add(immutable);
-                        targetTranslucent.put(immutable, opacity);
+                        targetTranslucent.put(immutable, (float) smooth);
+                        targetFadeTicks.put(immutable, FULL_FADE_TICKS);
                     }
                 }
             }
@@ -271,35 +255,27 @@ public final class HiddenBlockManager {
                 (int) Math.floor(mc.player.getY()) + 1
         );
 
-        // Ease out: a large immediate opening that slows near the outer edge.
-        // The center stays absent while the two edge shells are re-rendered
-        // later through Minecraft's translucent pass.
-        double maximumTargetDistance = 1.0D;
-        for (BlockPos pos : targetMutable) {
-            maximumTargetDistance = Math.max(
-                    maximumTargetDistance,
-                    Math.sqrt(Vec3.atCenterOf(pos).distanceToSqr(cameraPos))
-            );
-        }
-        double progress = Math.min(
-                1.0D,
-                openingTicks / (double) OPEN_DURATION_TICKS
-        );
-        double remaining = 1.0D - progress;
-        double easedProgress = 1.0D - remaining * remaining * remaining;
-        double openRadius = Math.max(1.0D, maximumTargetDistance * easedProgress);
-        HashSet<BlockPos> animated = new HashSet<>();
+        HashSet<BlockPos> animated = new HashSet<>(targetMutable);
         HashMap<BlockPos, Float> animatedTranslucent = new HashMap<>();
         for (BlockPos pos : targetMutable) {
-            double distance = Math.sqrt(
-                    Vec3.atCenterOf(pos).distanceToSqr(cameraPos)
-            );
-            if (distance <= openRadius) {
+            float target = targetTranslucent.getOrDefault(pos, 0.0F);
+            float previous = hidden.contains(pos)
+                    ? translucent.getOrDefault(pos, target)
+                    : 1.0F;
+            int duration = targetFadeTicks.getOrDefault(pos, FULL_FADE_TICKS);
+            float opacity = Math.max(target, previous - 1.0F / duration);
+            animatedTranslucent.put(pos, opacity);
+        }
+
+        // Blocks leaving a moving cutaway fade completely visible before
+        // returning to the normal opaque chunk mesh.
+        for (BlockPos pos : hidden) {
+            if (targetMutable.contains(pos)) continue;
+            float previous = translucent.getOrDefault(pos, 0.0F);
+            float opacity = Math.min(1.0F, previous + 1.0F / FULL_FADE_TICKS);
+            if (opacity < 0.999F) {
                 animated.add(pos);
-                Float opacity = targetTranslucent.get(pos);
-                if (opacity != null) {
-                    animatedTranslucent.put(pos, opacity);
-                }
+                animatedTranslucent.put(pos, opacity);
             }
         }
 
@@ -319,6 +295,60 @@ public final class HiddenBlockManager {
         } else if (!nextFade.equals(translucent)) {
             translucent = nextFade;
         }
+    }
+
+    private static boolean hasCrossObstruction(
+            Minecraft mc,
+            Vec3 cameraPos,
+            Vec3 playerPos,
+            Vec3 right,
+            Vec3 up
+    ) {
+        Vec3[] offsets = {
+                Vec3.ZERO,
+                right.scale(TRIGGER_RAY_OFFSET),
+                right.scale(-TRIGGER_RAY_OFFSET),
+                up.scale(TRIGGER_RAY_OFFSET),
+                up.scale(-TRIGGER_RAY_OFFSET)
+        };
+        for (Vec3 offset : offsets) {
+            HitResult hit = mc.level.clip(new ClipContext(
+                    cameraPos.add(offset),
+                    playerPos.add(offset),
+                    ClipContext.Block.OUTLINE,
+                    ClipContext.Fluid.NONE,
+                    mc.player
+            ));
+            if (hit.getType() == HitResult.Type.BLOCK) return true;
+        }
+        return false;
+    }
+
+    private static Vec3 cameraRight(Vec3 axis) {
+        Vec3 right = axis.cross(new Vec3(0.0D, 1.0D, 0.0D));
+        return right.lengthSqr() < 1.0E-6D
+                ? new Vec3(1.0D, 0.0D, 0.0D)
+                : right.normalize();
+    }
+
+    private static int fadeTicksFor(Vec3 fromAxis, Vec3 right, Vec3 up) {
+        double horizontal = fromAxis.dot(right);
+        double vertical = fromAxis.dot(up);
+        double centerDistance = Math.hypot(horizontal, vertical);
+        if (centerDistance <= 0.65D) return CENTER_FADE_TICKS;
+
+        double cardinalDistance = Math.min(
+                Math.min(
+                        Math.hypot(horizontal - TRIGGER_RAY_OFFSET, vertical),
+                        Math.hypot(horizontal + TRIGGER_RAY_OFFSET, vertical)
+                ),
+                Math.min(
+                        Math.hypot(horizontal, vertical - TRIGGER_RAY_OFFSET),
+                        Math.hypot(horizontal, vertical + TRIGGER_RAY_OFFSET)
+                )
+        );
+        if (cardinalDistance <= 0.75D) return CROSS_FADE_TICKS;
+        return FULL_FADE_TICKS;
     }
 
     private static void markDirty(Minecraft mc, Set<BlockPos> positions) {
