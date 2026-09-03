@@ -24,8 +24,8 @@ public final class TranslucentCutawayRenderer {
          * its native translucent terrain, so Oculus handles these vertices by
          * the same shader-aware world pass it uses for glass.
          */
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_CUTOUT_MIPPED_BLOCKS) return;
-
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_CUTOUT_MIPPED_BLOCKS_BLOCKS) return;
+        
         Map<BlockPos, Float> blocks = HiddenBlockManager.translucentSnapshot();
         if (blocks.isEmpty()) return;
 
