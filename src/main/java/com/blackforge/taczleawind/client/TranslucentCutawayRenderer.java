@@ -48,6 +48,10 @@ public final class TranslucentCutawayRenderer {
         HiddenBlockManager.beginOverlayRender();
         try {
             for (Map.Entry<BlockPos, Float> entry : blocks.entrySet()) {
+                // A completed center/cardinal fade is represented only by the
+                // absent chunk block. Never submit a zero-alpha replacement;
+                // some pipelines treat that geometry as opaque.
+                if (entry.getValue() <= 0.001F) continue;
                 BlockPos pos = entry.getKey();
                 BlockState state = mc.level.getBlockState(pos);
                 if (state.isAir()) continue;

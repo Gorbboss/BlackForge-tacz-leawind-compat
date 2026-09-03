@@ -1,6 +1,6 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
-## BlackForge v0.3.0 (build #55 baseline)
+## BlackForge v0.4.0 (build #55 baseline)
 
 - Preserves the confirmed working six-tick eased camera cutaway activation.
 - Keeps the capped tube center completely invisible. It begins one block wide,
@@ -12,6 +12,22 @@
   blocks through the shader-aware translucent-entity path used by Oculus.
 - Hard-limits Leawind's maximum third-person zoom to 12 blocks. This limit is
   intentionally not configurable.
+- Keeps shader-mode chunk geometry intact so the original blocks remain in
+  Photon's shadow pass. Publishes `bfCutaway*` uniforms for the matching
+  BlackForge Edition Photon camera-only mask.
+- Stops submitting replacement geometry after a vanilla center block reaches
+  zero opacity, preventing zero-alpha blocks from being treated as opaque.
+
+### Photon uniform contract
+
+- `bfCutawayActive` - 1 while the camera mask or its return fade is active.
+- `bfCutawayStart`, `bfCutawayEnd` - world-space corridor endpoints.
+- `bfCutawayRight`, `bfCutawayUp` - camera-plane basis vectors.
+- `bfCutawayFade` - center, cardinal-cross, and full-area fade progress.
+- `bfCutawayShape` - taper length, end radius, tube radius, and outer fade width.
+
+Photon must consume these only from its main-camera terrain programs. Shadow
+programs intentionally remain unchanged so cutaway blocks keep casting shadows.
 - Does not restore the removed shader-shadow renderer.
 
 Forge 1.20.1 compatibility fork based conceptually on

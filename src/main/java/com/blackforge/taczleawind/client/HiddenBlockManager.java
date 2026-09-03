@@ -81,7 +81,12 @@ public final class HiddenBlockManager {
     }
 
     private static void clearImmediately(Minecraft mc) {
+        ShaderCutawayState.clear();
         cone = ConeVolume.INACTIVE;
+        clearHiddenGeometry(mc);
+    }
+
+    private static void clearHiddenGeometry(Minecraft mc) {
         translucent = Map.of();
         Set<BlockPos> old = hidden;
         if (old.isEmpty()) return;
@@ -143,7 +148,12 @@ public final class HiddenBlockManager {
         Vec3 cameraToPlayer = playerPos.subtract(cameraPos);
         double cameraDistance = cameraToPlayer.length();
         if (cameraDistance < 2.05D) {
-            closeGradually(mc);
+            ShaderCutawayState.deactivateGradually();
+            if (ShaderPackDetector.isShaderPackActive()) {
+                clearHiddenGeometry(mc);
+            } else {
+                closeGradually(mc);
+            }
             return;
         }
 
@@ -156,7 +166,12 @@ public final class HiddenBlockManager {
          * A wall clipping any one of these rays activates the cutaway early.
          */
         if (!hasCrossObstruction(mc, cameraPos, playerPos, right, up)) {
-            closeGradually(mc);
+            ShaderCutawayState.deactivateGradually();
+            if (ShaderPackDetector.isShaderPackActive()) {
+                clearHiddenGeometry(mc);
+            } else {
+                closeGradually(mc);
+            }
             return;
         }
 
@@ -168,6 +183,28 @@ public final class HiddenBlockManager {
         double shapeLength = shapeAxis.length();
         Vec3 shapeDirection = shapeAxis.scale(1.0D / shapeLength);
         double taperLength = Math.min(MAX_TAPER_LENGTH, shapeLength * 0.25D);
+
+        cone = new ConeVolume(
+                start,
+                shapeDirection,
+                shapeLength,
+                taperLength,
+                (int) Math.floor(mc.player.getY()) + 1
+        );
+        ShaderCutawayState.activate(
+                start, end, right, up, taperLength,
+                END_RADIUS, TUBE_RADIUS, OUTER_FADE_WIDTH
+        );
+
+        /*
+         * With shaders, Photon performs the camera-only fragment mask. Keep
+         * the normal chunk geometry intact so Oculus's shadow pass still sees
+         * every original block.
+         */
+        if (ShaderPackDetector.isShaderPackActive()) {
+            clearHiddenGeometry(mc);
+            return;
+        }
 
         double blockAllowance = Math.sqrt(3.0D) * 0.5D;
         double searchRadius = TUBE_RADIUS
@@ -247,14 +284,6 @@ public final class HiddenBlockManager {
             }
         }
 
-        cone = new ConeVolume(
-                start,
-                shapeDirection,
-                shapeLength,
-                taperLength,
-                (int) Math.floor(mc.player.getY()) + 1
-        );
-
         HashSet<BlockPos> animated = new HashSet<>(targetMutable);
         HashMap<BlockPos, Float> animatedTranslucent = new HashMap<>();
         for (BlockPos pos : targetMutable) {
@@ -264,7 +293,9 @@ public final class HiddenBlockManager {
                     : 1.0F;
             int duration = targetFadeTicks.getOrDefault(pos, FULL_FADE_TICKS);
             float opacity = Math.max(target, previous - 1.0F / duration);
-            animatedTranslucent.put(pos, opacity);
+            if (opacity > 0.001F) {
+                animatedTranslucent.put(pos, opacity);
+            }
         }
 
         // Blocks leaving a moving cutaway fade completely visible before

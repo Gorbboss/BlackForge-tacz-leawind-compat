@@ -17,7 +17,8 @@
     "EmbeddiumBlockRendererMixin",
     "EmbeddiumBlockOcclusionMixin",
     "BlockRenderDispatcherMixin",
-    "BlockFaceBoundaryMixin"
+    "BlockFaceBoundaryMixin",
+    "OculusUniformsMixin"
   ],
   "injectors": {
     "defaultRequire": 0
