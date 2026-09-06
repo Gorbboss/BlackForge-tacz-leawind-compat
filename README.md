@@ -1,5 +1,20 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
+## BlackForge v0.4.5 eight-sector cutaway test
+
+- Splits the 3x3 corridor into eight camera-plane sectors surrounding its
+  center core.
+- A blocked sector opens fully and its two neighboring sectors open at reduced
+  width, producing a tapered three-slice opening instead of clearing the whole
+  corridor.
+- Finds the final obstructing block across the 3x3 probe grid and ends the
+  corridor just beyond it; blocks closer to the player remain untouched.
+- Renders the three transition layers as client-only black-concrete geometry
+  while their existing proportional smoothing changes opacity.
+- Uses collision shapes for the final-obstruction scan so non-colliding grass
+  and similar vegetation do not extend the corridor.
+- Use BlackForge Unbound 1.7 for the matching eight-sector shader mask.
+
 ## BlackForge v0.4.4 black-concrete boundary lining
 
 - Removes the experimental untextured black boundary treatment.

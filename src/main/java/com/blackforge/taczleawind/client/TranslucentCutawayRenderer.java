@@ -9,13 +9,10 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.inventory.InventoryMenu;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 
 import java.util.Map;
@@ -52,36 +49,30 @@ public final class TranslucentCutawayRenderer {
                 InventoryMenu.BLOCK_ATLAS
         );
         VertexConsumer translucentBuffer = buffers.getBuffer(shaderAwareTranslucent);
-        BlockRenderDispatcher dispatcher = mc.getBlockRenderer();
-        RandomSource random = RandomSource.create();
+        TextureAtlasSprite blackConcrete = mc.getTextureAtlas(InventoryMenu.BLOCK_ATLAS)
+                .apply(new ResourceLocation("minecraft", "block/black_concrete"));
 
         HiddenBlockManager.beginOverlayRender();
         try {
             for (Map.Entry<BlockPos, Float> entry : blocks.entrySet()) {
-                // A completed center/cardinal fade is represented only by the
-                // absent chunk block. Never submit a zero-alpha replacement;
-                // some pipelines treat that geometry as opaque.
+                // Transition blocks use fake black-concrete geometry. The
+                // center opening remains absent and submits no zero-alpha mesh.
                 if (entry.getValue() <= 0.001F) continue;
                 BlockPos pos = entry.getKey();
-                BlockState state = mc.level.getBlockState(pos);
-                if (state.isAir()) continue;
-
                 poseStack.pushPose();
                 poseStack.translate(
                         pos.getX() - camera.getPosition().x,
                         pos.getY() - camera.getPosition().y,
                         pos.getZ() - camera.getPosition().z
                 );
-                random.setSeed(state.getSeed(pos));
-                dispatcher.renderBatched(
-                        state,
-                        pos,
-                        mc.level,
-                        poseStack,
-                        new AlphaVertexConsumer(translucentBuffer, entry.getValue()),
-                        true,
-                        random
-                );
+                PoseStack.Pose blockPose = poseStack.last();
+                int light = LevelRenderer.getLightColor(mc.level, pos);
+                for (Direction face : Direction.values()) {
+                    if (blocks.containsKey(pos.relative(face))) continue;
+                    emitBlackConcreteFace(translucentBuffer, blockPose,
+                            BlockPos.ZERO, face, blackConcrete, light,
+                            entry.getValue());
+                }
                 poseStack.popPose();
             }
         } finally {
@@ -91,8 +82,6 @@ public final class TranslucentCutawayRenderer {
 
         // Draw only the camera-facing cavity boundary using Minecraft's real
         // black-concrete atlas texture. No block is placed or replaced.
-        TextureAtlasSprite blackConcrete = mc.getTextureAtlas(InventoryMenu.BLOCK_ATLAS)
-                .apply(new ResourceLocation("minecraft", "block/black_concrete"));
         poseStack.pushPose();
         poseStack.translate(-camera.getPosition().x, -camera.getPosition().y,
                 -camera.getPosition().z);
@@ -100,7 +89,7 @@ public final class TranslucentCutawayRenderer {
         for (HiddenBlockManager.BoundaryFace face : boundary) {
             int light = LevelRenderer.getLightColor(mc.level, face.pos());
             emitBlackConcreteFace(translucentBuffer, pose, face.pos(),
-                    face.face(), blackConcrete, light);
+                    face.face(), blackConcrete, light, 1.0F);
         }
         poseStack.popPose();
 
@@ -109,7 +98,8 @@ public final class TranslucentCutawayRenderer {
 
     private static void emitBlackConcreteFace(
             VertexConsumer consumer, PoseStack.Pose pose,
-            BlockPos pos, Direction face, TextureAtlasSprite sprite, int light
+            BlockPos pos, Direction face, TextureAtlasSprite sprite,
+            int light, float opacity
     ) {
         float x = pos.getX(), y = pos.getY(), z = pos.getZ();
         float e = 0.001F;
@@ -128,33 +118,13 @@ public final class TranslucentCutawayRenderer {
         float v0 = sprite.getV0(), v1 = sprite.getV1();
         for (int i = 0; i < 4; i++) {
             consumer.vertex(matrix, vertices[i][0], vertices[i][1], vertices[i][2])
-                    .color(255, 255, 255, 255)
+                    .color(255, 255, 255, Math.round(255.0F * opacity))
                     .uv((i == 1 || i == 2) ? u1 : u0, i >= 2 ? v1 : v0)
                     .overlayCoords(OverlayTexture.NO_OVERLAY)
                     .uv2(light)
                     .normal(normal, nx, ny, nz)
                     .endVertex();
         }
-    }
-
-    private static final class AlphaVertexConsumer implements VertexConsumer {
-        private final VertexConsumer delegate;
-        private final float opacity;
-
-        private AlphaVertexConsumer(VertexConsumer delegate, float opacity) {
-            this.delegate = delegate;
-            this.opacity = opacity;
-        }
-
-        @Override public VertexConsumer vertex(double x, double y, double z) { delegate.vertex(x, y, z); return this; }
-        @Override public VertexConsumer color(int r, int g, int b, int a) { delegate.color(r, g, b, Math.round(a * opacity)); return this; }
-        @Override public VertexConsumer uv(float u, float v) { delegate.uv(u, v); return this; }
-        @Override public VertexConsumer overlayCoords(int u, int v) { delegate.overlayCoords(u, v); return this; }
-        @Override public VertexConsumer uv2(int u, int v) { delegate.uv2(u, v); return this; }
-        @Override public VertexConsumer normal(float x, float y, float z) { delegate.normal(x, y, z); return this; }
-        @Override public void endVertex() { delegate.endVertex(); }
-        @Override public void defaultColor(int r, int g, int b, int a) { delegate.defaultColor(r, g, b, Math.round(a * opacity)); }
-        @Override public void unsetDefaultColor() { delegate.unsetDefaultColor(); }
     }
 
     private TranslucentCutawayRenderer() {}

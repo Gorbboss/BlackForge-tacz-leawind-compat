@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.5
+
+- Replaces four directional sides with eight pie-like cutaway sectors.
+- Opens an obstructed sector and its two narrower neighboring sectors.
+- Stops the cutaway just beyond the last obstructing block.
+- Renders all transition layers with the black-concrete texture while fading.
+- Pairs with BlackForge Unbound 1.7.
+
 ## 0.4.4
 
 - Replaces the untextured black shell with inward-facing black-concrete quads.

@@ -119,6 +119,23 @@ public final class HiddenBlockManager {
         }
     }
 
+    private static void closeShaderOverlay(Minecraft mc) {
+        HashMap<BlockPos, Float> remaining = new HashMap<>();
+        for (Map.Entry<BlockPos, Float> entry : translucent.entrySet()) {
+            float opacity = Math.min(1.0F, entry.getValue() + VISIBILITY_STEP);
+            if (opacity < 0.999F) remaining.put(entry.getKey(), opacity);
+        }
+        translucent = Map.copyOf(remaining);
+        if (remaining.isEmpty() && !ShaderCutawayState.snapshot().active()) {
+            blackBoundaryFaces = Set.of();
+        }
+        if (!hidden.isEmpty()) {
+            Set<BlockPos> old = hidden;
+            hidden = Set.of();
+            markDirty(mc, old);
+        }
+    }
+
     public static void update() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null
@@ -140,10 +157,7 @@ public final class HiddenBlockManager {
         if (cameraDistance < 2.05D) {
             ShaderCutawayState.deactivateSmoothly();
             if (ShaderPackDetector.isShaderPackActive()) {
-                clearHiddenBlocks(mc);
-                if (!ShaderCutawayState.snapshot().active()) {
-                    blackBoundaryFaces = Set.of();
-                }
+                closeShaderOverlay(mc);
             } else closeSmoothly(mc);
             return;
         }
@@ -156,14 +170,11 @@ public final class HiddenBlockManager {
          * Test the center plus the four cardinal edges of the camera opening.
          * A wall clipping any one of these rays activates the cutaway early.
          */
-        DirectionalObstruction obstruction = findObstruction(mc, cameraPos, playerPos, right, up);
+        CutawayObstruction obstruction = findObstruction(mc, cameraPos, playerPos, right, up);
         if (!obstruction.any() && !overheadClearance) {
             ShaderCutawayState.deactivateSmoothly();
             if (ShaderPackDetector.isShaderPackActive()) {
-                clearHiddenBlocks(mc);
-                if (!ShaderCutawayState.snapshot().active()) {
-                    blackBoundaryFaces = Set.of();
-                }
+                closeShaderOverlay(mc);
             } else closeSmoothly(mc);
             return;
         }
@@ -171,7 +182,12 @@ public final class HiddenBlockManager {
         // Start one block behind the camera and stop one block behind the
         // character, on the camera-facing side.
         Vec3 start = cameraPos.subtract(axis.scale(CAMERA_APEX_BACK_OFFSET));
-        Vec3 end = playerPos.subtract(axis.scale(PLAYER_END_BACK_OFFSET));
+        double normalEndDistance = Math.max(1.0D,
+                cameraDistance - PLAYER_END_BACK_OFFSET);
+        double cutawayEndDistance = obstruction.any()
+                ? Math.min(normalEndDistance, obstruction.lastDistance() + 0.85D)
+                : normalEndDistance;
+        Vec3 end = cameraPos.add(axis.scale(cutawayEndDistance));
         Vec3 shapeAxis = end.subtract(start);
         double shapeLength = shapeAxis.length();
         Vec3 shapeDirection = shapeAxis.scale(1.0D / shapeLength);
@@ -244,7 +260,12 @@ public final class HiddenBlockManager {
                             shapeDirection.scale(axialDistance)
                     );
                     double distance = Math.sqrt(center.distanceToSqr(nearest));
-                    double innerEdge = radius + blockAllowance;
+                    double centerEdge = END_RADIUS + blockAllowance;
+                    double sectorStrength = obstruction.strength(
+                            center.subtract(nearest), right, up);
+                    double innerEdge = centerEdge
+                            + Math.max(0.0D, radius + blockAllowance - centerEdge)
+                            * sectorStrength;
                     double fadeEdge = innerEdge + OUTER_FADE_WIDTH;
 
                     BlockPos immutable = pos.immutable();
@@ -279,19 +300,12 @@ public final class HiddenBlockManager {
         }
         blackBoundaryFaces = Set.copyOf(boundary);
 
-        /* With shaders, only the fake boundary lining is rendered by the mod.
-         * Original chunk geometry stays intact for the shadow pass. */
-        if (ShaderPackDetector.isShaderPackActive()) {
-            clearHiddenBlocks(mc);
-            return;
-        }
-
         HashSet<BlockPos> animated = new HashSet<>();
         HashMap<BlockPos, Float> animatedOpacity = new HashMap<>();
         for (BlockPos pos : targetMutable) {
             float target = targetTranslucent.getOrDefault(pos, 0.0F);
-            float previous = hidden.contains(pos)
-                    ? translucent.getOrDefault(pos, 0.0F) : 1.0F;
+            float previous = translucent.containsKey(pos)
+                    ? translucent.get(pos) : 1.0F;
             // The center corridor and camera-clearance box open immediately.
             float opacity = target <= 0.001F ? 0.0F
                     : moveToward(previous, target, VISIBILITY_STEP);
@@ -299,7 +313,7 @@ public final class HiddenBlockManager {
             animatedOpacity.put(pos, opacity);
         }
         // Everything leaving the moving cutaway takes one second to return.
-        for (BlockPos pos : hidden) {
+        for (BlockPos pos : translucent.keySet()) {
             if (targetMutable.contains(pos)) continue;
             float opacity = Math.min(1.0F,
                     translucent.getOrDefault(pos, 0.0F) + VISIBILITY_STEP);
@@ -307,6 +321,15 @@ public final class HiddenBlockManager {
                 animated.add(pos);
                 animatedOpacity.put(pos, opacity);
             }
+        }
+        /* With shaders, keep original chunk geometry for shadows and publish
+         * only the animated black-concrete replacement overlay. */
+        if (ShaderPackDetector.isShaderPackActive()) {
+            Set<BlockPos> oldHidden = hidden;
+            hidden = Set.of();
+            translucent = Map.copyOf(animatedOpacity);
+            if (!oldHidden.isEmpty()) markDirty(mc, oldHidden);
+            return;
         }
         publish(mc, animated, animatedOpacity);
     }
@@ -337,30 +360,61 @@ public final class HiddenBlockManager {
         }
     }
 
-    private static DirectionalObstruction findObstruction(
+    private static CutawayObstruction findObstruction(
             Minecraft mc,
             Vec3 cameraPos,
             Vec3 playerPos,
             Vec3 right,
             Vec3 up
     ) {
-        boolean any = false, rightHit = false, leftHit = false, upHit = false, downHit = false;
+        boolean any = false;
+        double lastDistance = 0.0D;
+        float[] sectors = new float[8];
         for (int horizontal = -1; horizontal <= 1; horizontal++) {
             for (int vertical = -1; vertical <= 1; vertical++) {
                 Vec3 offset = right.scale(horizontal * TRIGGER_RAY_OFFSET)
                         .add(up.scale(vertical * TRIGGER_RAY_OFFSET));
-                HitResult hit = mc.level.clip(new ClipContext(
-                        cameraPos.add(offset), playerPos.add(offset),
-                        ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mc.player));
-                if (hit.getType() != HitResult.Type.BLOCK) continue;
+                double rayLast = lastObstructionDistance(
+                        mc, cameraPos.add(offset), playerPos.add(offset));
+                if (rayLast < 0.0D) continue;
                 any = true;
-                if (horizontal > 0) rightHit = true;
-                if (horizontal < 0) leftHit = true;
-                if (vertical > 0) upHit = true;
-                if (vertical < 0) downHit = true;
+                lastDistance = Math.max(lastDistance, rayLast);
+                if (horizontal == 0 && vertical == 0) continue;
+                int sector = sectorIndex(horizontal, vertical);
+                sectors[sector] = 1.0F;
+                sectors[(sector + 1) & 7] = Math.max(sectors[(sector + 1) & 7], 0.65F);
+                sectors[(sector + 7) & 7] = Math.max(sectors[(sector + 7) & 7], 0.65F);
             }
         }
-        return new DirectionalObstruction(any, rightHit, leftHit, upHit, downHit);
+        return new CutawayObstruction(any, lastDistance, sectors);
+    }
+
+    private static double lastObstructionDistance(
+            Minecraft mc, Vec3 start, Vec3 end
+    ) {
+        Vec3 delta = end.subtract(start);
+        double length = delta.length();
+        if (length < 0.001D) return -1.0D;
+        Vec3 direction = delta.scale(1.0D / length);
+        BlockPos previous = null;
+        double last = -1.0D;
+        for (double distance = 0.0D; distance <= length; distance += 0.20D) {
+            BlockPos pos = BlockPos.containing(start.add(direction.scale(distance)));
+            if (pos.equals(previous)) continue;
+            previous = pos;
+            BlockState state = mc.level.getBlockState(pos);
+            if (!state.isAir()
+                    && state.getRenderShape() != RenderShape.INVISIBLE
+                    && !state.getCollisionShape(mc.level, pos).isEmpty()) {
+                last = distance;
+            }
+        }
+        return last;
+    }
+
+    private static int sectorIndex(double horizontal, double vertical) {
+        double angle = Math.atan2(vertical, horizontal);
+        return ((int) Math.round(angle / (Math.PI / 4.0D)) + 8) & 7;
     }
 
     private static Vec3 cameraRight(Vec3 axis) {
@@ -379,16 +433,22 @@ public final class HiddenBlockManager {
                 && pos.getZ() >= minZ && pos.getZ() <= minZ + 1;
     }
 
-    record DirectionalObstruction(
-            boolean any, boolean right, boolean left, boolean up, boolean down
-    ) {
-        boolean enables(Vec3 fromAxis, Vec3 rightVector, Vec3 upVector) {
+    record CutawayObstruction(boolean any, double lastDistance, float[] sectors) {
+        float strength(Vec3 fromAxis, Vec3 rightVector, Vec3 upVector) {
             double horizontal = fromAxis.dot(rightVector);
             double vertical = fromAxis.dot(upVector);
-            if (Math.abs(horizontal) >= Math.abs(vertical)) {
-                return horizontal >= 0.0D ? right : left;
+            if (Math.abs(horizontal) < 0.001D && Math.abs(vertical) < 0.001D) {
+                return 1.0F;
             }
-            return vertical >= 0.0D ? up : down;
+            return sectors[sectorIndex(horizontal, vertical)];
+        }
+
+        boolean enables(Vec3 fromAxis, Vec3 rightVector, Vec3 upVector) {
+            return strength(fromAxis, rightVector, upVector) > 0.0F;
+        }
+
+        float sector(int index) {
+            return sectors[index & 7];
         }
     }
 
