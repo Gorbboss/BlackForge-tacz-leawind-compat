@@ -87,3 +87,18 @@
 - Wall-mode wedges taper from approximately 2x2 at both ends to 4x4 at the
   midpoint, with no additional outer transition rings.
 - Replaceable vegetation such as grass and flowers cannot trigger either mode.
+## 0.4.14
+
+- Publishes the player's minimum cutaway block level to BlackForge Unbound.
+- BlackForge Unbound 1.12 quantizes shader cutaway tests to owning block
+  centers, matching the mod's whole-block removal instead of cutting circles
+  through individual block faces.
+## 0.4.15
+
+- Extends the cutaway start to two blocks behind the camera.
+- Removes the old player-height cutaway restriction; physical ground camera
+  collision remains responsible for preventing underground viewing.
+- Adds smoothed camera-motion prediction, capped at one block, so fast camera
+  movement prepares the cutaway before the camera arrives.
+- Keeps the current compact tube, conditional wall wedges, and zero-light
+  camera-only boundary unchanged.

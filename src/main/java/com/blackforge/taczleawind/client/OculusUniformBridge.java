@@ -32,6 +32,8 @@ public final class OculusUniformBridge {
                 net.minecraft.core.BlockPos pos = ShaderCutawayState.snapshot().cameraBlock();
                 return new Vector3f(pos.getX(), pos.getY(), pos.getZ());
             });
+            addVec3(holder, perFrame, "bfCutawayCameraPosition",
+                    () -> vector(ShaderCutawayState.snapshot().cameraPosition()));
             addVec4(holder, perFrame, "bfCutawaySectorsA", () -> {
                 ShaderCutawayState.Snapshot state = ShaderCutawayState.snapshot();
                 return new Vector4f(

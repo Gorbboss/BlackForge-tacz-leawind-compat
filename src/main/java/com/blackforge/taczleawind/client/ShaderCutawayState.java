@@ -11,6 +11,7 @@ public final class ShaderCutawayState {
     private static float overheadFade;
     static void activate(
             BlockPos cameraBlock,
+            Vec3 cameraPosition,
             Vec3 start,
             Vec3 end,
             Vec3 right,
@@ -28,7 +29,7 @@ public final class ShaderCutawayState {
         }
         overheadFade = overheadClearance ? 1.0F : 0.0F;
         snapshot = new Snapshot(
-                true, cameraBlock, start, end, right, up,
+                true, cameraBlock, cameraPosition, start, end, right, up,
                 (float) taperLength,
                 (float) endRadius,
                 (float) tubeRadius,
@@ -57,6 +58,7 @@ public final class ShaderCutawayState {
     public record Snapshot(
             boolean active,
             BlockPos cameraBlock,
+            Vec3 cameraPosition,
             Vec3 start,
             Vec3 end,
             Vec3 right,
@@ -72,6 +74,7 @@ public final class ShaderCutawayState {
     ) {
         private static final Snapshot INACTIVE = new Snapshot(
                 false, BlockPos.ZERO, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO,
+                Vec3.ZERO,
                 0.0F, 0.0F, 0.0F, 0.0F,
                 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
                 0.0F, 0.0F, 0.0F, 0.0F, 0.0F

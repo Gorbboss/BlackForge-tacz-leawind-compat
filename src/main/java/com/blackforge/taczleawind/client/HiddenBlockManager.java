@@ -22,8 +22,11 @@ import java.util.Map;
 import java.util.Set;
 
 public final class HiddenBlockManager {
-    private static final double CAMERA_APEX_BACK_OFFSET = 1.0D;
+    private static final double CAMERA_APEX_BACK_OFFSET = 2.0D;
     private static final double NEAR_PLAYER_END_OFFSET = 0.25D;
+    private static final double MAX_PREDICTION_DISTANCE = 1.0D;
+    private static final double PREDICTION_FRAMES = 4.0D;
+    private static final double PREDICTION_BLEND = 0.5D;
     // Compact main tube (about 2x2) and wall-mode midpoint (about 4x4).
     private static final double END_RADIUS = 1.0D;
     private static final double TUBE_RADIUS = 2.0D;
@@ -44,6 +47,8 @@ public final class HiddenBlockManager {
     private static volatile Map<BlockPos, Integer> retainedLayers = Map.of();
     private static volatile Map<BlockPos, Double> retainedReleaseRadii = Map.of();
     private static double retainedEndDistance = -1.0D;
+    private static Vec3 lastCameraPosition;
+    private static Vec3 predictionOffset = Vec3.ZERO;
     private static volatile ConeVolume cone = ConeVolume.INACTIVE;
 
     public static boolean isHidden(BlockPos pos) {
@@ -86,6 +91,8 @@ public final class HiddenBlockManager {
     }
 
     private static void clearImmediately(Minecraft mc) {
+        lastCameraPosition = null;
+        predictionOffset = Vec3.ZERO;
         ShaderCutawayState.clear();
         cone = ConeVolume.INACTIVE;
         boundaryFaces = Map.of();
@@ -137,6 +144,7 @@ public final class HiddenBlockManager {
 
         Camera camera = mc.gameRenderer.getMainCamera();
         Vec3 cameraPos = camera.getPosition();
+        Vec3 predictedCameraPos = updatePrediction(cameraPos);
         BlockPos cameraBlock = BlockPos.containing(cameraPos);
         Vec3 playerPos = mc.player.getEyePosition(1.0F)
                 .add(0.0D, -0.30D, 0.0D);
@@ -157,7 +165,8 @@ public final class HiddenBlockManager {
 
         // Normal mode listens only to center and top-center. Directional
         // wedges are populated only while the camera itself is inside terrain.
-        CutawayObstruction obstruction = findObstruction(mc, cameraPos, playerPos, right, up);
+        CutawayObstruction obstruction = findObstruction(
+                mc, cameraPos, predictedCameraPos, playerPos, right, up);
         if (!obstruction.any()) {
             ShaderCutawayState.deactivateSmoothly();
             if (ShaderPackDetector.isShaderPackActive()) {
@@ -166,11 +175,17 @@ public final class HiddenBlockManager {
             return;
         }
 
-        // Start one block behind the camera. The player-side end is selected
-        // independently for the center and each of the eight screen sectors.
-        Vec3 start = cameraPos.subtract(axis.scale(CAMERA_APEX_BACK_OFFSET));
+        Vec3 predictedToPlayer = playerPos.subtract(predictedCameraPos);
+        double predictedDistance = predictedToPlayer.length();
+        Vec3 predictedAxis = predictedDistance < 0.001D
+                ? axis : predictedToPlayer.scale(1.0D / predictedDistance);
+
+        // Begin two blocks behind the predicted camera. The player endpoint
+        // remains fixed, so prediction expands only toward camera movement.
+        Vec3 start = predictedCameraPos.subtract(
+                predictedAxis.scale(CAMERA_APEX_BACK_OFFSET));
         double normalEndDistance = Math.max(1.0D,
-                cameraDistance - NEAR_PLAYER_END_OFFSET);
+                predictedDistance - NEAR_PLAYER_END_OFFSET);
         double rawEndDistance = normalEndDistance;
         double cutawayEndDistance = rawEndDistance;
         if (retainedEndDistance > rawEndDistance
@@ -178,7 +193,8 @@ public final class HiddenBlockManager {
             cutawayEndDistance = Math.min(normalEndDistance, retainedEndDistance);
         }
         retainedEndDistance = cutawayEndDistance;
-        Vec3 end = cameraPos.add(axis.scale(cutawayEndDistance));
+        Vec3 end = predictedCameraPos.add(
+                predictedAxis.scale(cutawayEndDistance));
         Vec3 shapeAxis = end.subtract(start);
         double shapeLength = shapeAxis.length();
         Vec3 shapeDirection = shapeAxis.scale(1.0D / shapeLength);
@@ -189,13 +205,12 @@ public final class HiddenBlockManager {
                 shapeDirection,
                 shapeLength,
                 taperLength,
-                (int) Math.floor(mc.player.getY()) + 1,
                 right,
                 up,
                 obstruction
         );
         ShaderCutawayState.activate(
-                cameraBlock, start, end, right, up, taperLength,
+                cameraBlock, cameraPos, start, end, right, up, taperLength,
                 END_RADIUS, TUBE_RADIUS, 0.0D,
                 obstruction, obstruction.cameraInside()
         );
@@ -235,14 +250,8 @@ public final class HiddenBlockManager {
                         continue;
                     }
 
-                    // Keep the cutaway one full block above the surface the
-                    // player is standing on. Camera pitch cannot lower it.
-                    int minimumHiddenY = (int) Math.floor(mc.player.getY()) + 1;
                     boolean cameraClearance = obstruction.cameraInside()
                             && isInsideCameraClearance(pos, cameraPos);
-                    if (pos.getY() < minimumHiddenY && !cameraClearance) {
-                        continue;
-                    }
 
                     double radius = radiusAt(
                             axialDistance,
@@ -359,14 +368,16 @@ public final class HiddenBlockManager {
     private static CutawayObstruction findObstruction(
             Minecraft mc,
             Vec3 cameraPos,
+            Vec3 predictedCameraPos,
             Vec3 playerPos,
             Vec3 right,
             Vec3 up
     ) {
-        double centerLast = lastObstructionDistance(mc, cameraPos, playerPos);
+        double centerLast = lastObstructionDistance(
+                mc, predictedCameraPos, playerPos);
         double topLast = lastObstructionDistance(
                 mc,
-                cameraPos.add(up.scale(TRIGGER_RAY_OFFSET)),
+                predictedCameraPos.add(up.scale(TRIGGER_RAY_OFFSET)),
                 playerPos.add(up.scale(TRIGGER_RAY_OFFSET))
         );
         boolean cameraInside = isSolidAt(mc, BlockPos.containing(cameraPos));
@@ -403,6 +414,29 @@ public final class HiddenBlockManager {
                 && !state.canBeReplaced()
                 && state.getRenderShape() != RenderShape.INVISIBLE
                 && !state.getCollisionShape(mc.level, pos).isEmpty();
+    }
+
+    private static Vec3 updatePrediction(Vec3 cameraPosition) {
+        if (lastCameraPosition == null
+                || cameraPosition.distanceToSqr(lastCameraPosition) > 16.0D) {
+            lastCameraPosition = cameraPosition;
+            predictionOffset = Vec3.ZERO;
+            return cameraPosition;
+        }
+
+        Vec3 movement = cameraPosition.subtract(lastCameraPosition);
+        lastCameraPosition = cameraPosition;
+        Vec3 desired = movement.scale(PREDICTION_FRAMES);
+        double desiredLength = desired.length();
+        if (desiredLength > MAX_PREDICTION_DISTANCE) {
+            desired = desired.scale(MAX_PREDICTION_DISTANCE / desiredLength);
+        }
+        predictionOffset = predictionOffset.scale(1.0D - PREDICTION_BLEND)
+                .add(desired.scale(PREDICTION_BLEND));
+        if (predictionOffset.lengthSqr() < 1.0E-5D) {
+            predictionOffset = Vec3.ZERO;
+        }
+        return cameraPosition.add(predictionOffset);
     }
 
     private static double lastObstructionDistance(
@@ -510,7 +544,6 @@ public final class HiddenBlockManager {
             Vec3 direction,
             double length,
             double taperLength,
-            int minimumY,
             Vec3 right,
             Vec3 up,
             CutawayObstruction obstruction
@@ -518,12 +551,12 @@ public final class HiddenBlockManager {
         private static final ConeVolume INACTIVE =
                 new ConeVolume(
                         Vec3.ZERO, Vec3.ZERO, 0.0D, 0.0D,
-                        Integer.MAX_VALUE, Vec3.ZERO, Vec3.ZERO,
+                        Vec3.ZERO, Vec3.ZERO,
                         new CutawayObstruction(false, false, 0.0D, new float[8])
                 );
 
         private boolean contains(AABB box) {
-            if (length <= 0.0D || box.maxY < minimumY) return false;
+            if (length <= 0.0D) return false;
 
             Vec3 center = box.getCenter();
             double axial = center.subtract(start).dot(direction);
