@@ -8,18 +8,14 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 
 import java.util.Map;
-import org.joml.Matrix3f;
-import org.joml.Matrix4f;
 
 /** Re-renders the cutaway fade while Oculus still owns the world buffers. */
 public final class TranslucentCutawayRenderer {
@@ -50,8 +46,6 @@ public final class TranslucentCutawayRenderer {
                 InventoryMenu.BLOCK_ATLAS
         );
         VertexConsumer translucentBuffer = buffers.getBuffer(shaderAwareTranslucent);
-        TextureAtlasSprite neutralSprite = mc.getTextureAtlas(InventoryMenu.BLOCK_ATLAS)
-                .apply(new ResourceLocation("minecraft", "block/white_concrete"));
         BlockRenderDispatcher dispatcher = mc.getBlockRenderer();
         RandomSource random = RandomSource.create();
 
@@ -79,8 +73,9 @@ public final class TranslucentCutawayRenderer {
             HiddenBlockManager.endOverlayRender();
         }
 
-        // Emit an explicit black face for every solid boundary. This does not
-        // depend on buried faces surviving Minecraft/Embeddium mesh culling.
+        // Re-render only the face exposed to the camera cavity. Its vertex
+        // color and packed light are both zero so neither vanilla nor a shader
+        // can relight it. This replaces the artificial stone-texture shell.
         for (Map.Entry<HiddenBlockManager.BoundaryFace, Float> entry
                 : boundary.entrySet()) {
             HiddenBlockManager.BoundaryFace face = entry.getKey();
@@ -92,8 +87,10 @@ public final class TranslucentCutawayRenderer {
                     face.pos().getY() - camera.getPosition().y,
                     face.pos().getZ() - camera.getPosition().z
             );
-            emitBlackBoundaryFace(translucentBuffer, poseStack.last(),
-                    face.face(), neutralSprite);
+            random.setSeed(state.getSeed(face.pos()));
+            dispatcher.renderBatched(state, face.pos(), mc.level, poseStack,
+                    new UnlitFaceVertexConsumer(translucentBuffer, face.face()),
+                    false, random);
             poseStack.popPose();
         }
 
@@ -120,32 +117,55 @@ public final class TranslucentCutawayRenderer {
         @Override public void unsetDefaultColor() { delegate.unsetDefaultColor(); }
     }
 
-    private static void emitBlackBoundaryFace(
-            VertexConsumer consumer, PoseStack.Pose pose,
-            Direction face, TextureAtlasSprite sprite
-    ) {
-        float e = 0.002F;
-        float[][] vertices = switch (face) {
-            case DOWN -> new float[][]{{0,-e,0},{1,-e,0},{1,-e,1},{0,-e,1}};
-            case UP -> new float[][]{{0,1+e,0},{0,1+e,1},{1,1+e,1},{1,1+e,0}};
-            case NORTH -> new float[][]{{0,0,-e},{0,1,-e},{1,1,-e},{1,0,-e}};
-            case SOUTH -> new float[][]{{0,0,1+e},{1,0,1+e},{1,1,1+e},{0,1,1+e}};
-            case WEST -> new float[][]{{-e,0,0},{-e,0,1},{-e,1,1},{-e,1,0}};
-            case EAST -> new float[][]{{1+e,0,0},{1+e,1,0},{1+e,1,1},{1+e,0,1}};
-        };
-        Matrix4f matrix = pose.pose();
-        Matrix3f normal = pose.normal();
-        float u0 = sprite.getU0(), u1 = sprite.getU1();
-        float v0 = sprite.getV0(), v1 = sprite.getV1();
-        for (int i = 0; i < 4; i++) {
-            consumer.vertex(matrix, vertices[i][0], vertices[i][1], vertices[i][2])
-                    .color(0, 0, 0, 255)
-                    .uv((i == 1 || i == 2) ? u1 : u0, i >= 2 ? v1 : v0)
-                    .overlayCoords(OverlayTexture.NO_OVERLAY)
-                    .uv2(0)
-                    .normal(normal, face.getStepX(), face.getStepY(), face.getStepZ())
-                    .endVertex();
+    /** Buffers one model vertex and emits only quads facing the cavity. */
+    private static final class UnlitFaceVertexConsumer implements VertexConsumer {
+        private final VertexConsumer delegate;
+        private final Direction face;
+        private double x, y, z;
+        private int alpha = 255;
+        private float u, v, normalX, normalY, normalZ;
+        private int overlayU = OverlayTexture.NO_OVERLAY & 0xFFFF;
+        private int overlayV = OverlayTexture.NO_OVERLAY >>> 16;
+
+        private UnlitFaceVertexConsumer(VertexConsumer delegate, Direction face) {
+            this.delegate = delegate;
+            this.face = face;
         }
+
+        @Override public VertexConsumer vertex(double x, double y, double z) {
+            this.x = x; this.y = y; this.z = z; return this;
+        }
+        @Override public VertexConsumer color(int r, int g, int b, int a) {
+            alpha = a; return this;
+        }
+        @Override public VertexConsumer uv(float u, float v) {
+            this.u = u; this.v = v; return this;
+        }
+        @Override public VertexConsumer overlayCoords(int u, int v) {
+            overlayU = u; overlayV = v; return this;
+        }
+        @Override public VertexConsumer uv2(int u, int v) { return this; }
+        @Override public VertexConsumer normal(float x, float y, float z) {
+            normalX = x; normalY = y; normalZ = z; return this;
+        }
+        @Override public void endVertex() {
+            float alignment = normalX * face.getStepX()
+                    + normalY * face.getStepY()
+                    + normalZ * face.getStepZ();
+            if (alignment > 0.99F) {
+                delegate.vertex(x + face.getStepX() * 0.001D,
+                                y + face.getStepY() * 0.001D,
+                                z + face.getStepZ() * 0.001D)
+                        .color(0, 0, 0, alpha)
+                        .uv(u, v)
+                        .overlayCoords(overlayU, overlayV)
+                        .uv2(0, 0)
+                        .normal(normalX, normalY, normalZ)
+                        .endVertex();
+            }
+        }
+        @Override public void defaultColor(int r, int g, int b, int a) {}
+        @Override public void unsetDefaultColor() {}
     }
 
     private TranslucentCutawayRenderer() {}
