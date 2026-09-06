@@ -1,27 +1,12 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
-## BlackForge v0.4.7 wedge-wall correction
+## BlackForge v0.4.8 corrected v0.4.5 baseline
 
-- Removes the closed air-generated enclosure introduced in v0.4.6.
-- Restores the v0.4.5 black-concrete boundary behavior where the cutaway meets
-  real terrain.
-- Extends only an activated wedge's outer radial wall backward toward the
-  camera through air.
-- Rejects axial air faces, preventing front caps, rear caps, and geometry that
-  can cover the camera.
-- Keeps bottom boundary suppression unless the boundary is below the player.
-- Continues to use BlackForge Unbound 1.8; its uniform contract is unchanged.
-
-## BlackForge v0.4.6 air-safe boundary test
-
-- Restores the transition layers to their original block textures with normal
-  transparency; they are no longer replaced by black concrete.
-- Builds the black-concrete boundary from the complete mathematical cutaway
-  volume, including air positions, so side openings cannot reveal terrain.
-- Suppresses downward-facing black-concrete boundary faces unless their fake
-  boundary position is below the player's feet.
-- Keeps the eight-sector wedges and last-obstruction endpoint from v0.4.5.
-- Use BlackForge Unbound 1.8 for the matching shader package.
+- Restores the complete v0.4.5 wedge, endpoint, smoothing, and boundary logic.
+- Changes only transitional rendering: those blocks again use their original
+  block textures while fading instead of black concrete.
+- The outer boundary continues to use black concrete exactly as in v0.4.5.
+- Use BlackForge Unbound 1.7, matching the restored v0.4.5 uniform contract.
 
 ## BlackForge v0.4.5 eight-sector cutaway test
 

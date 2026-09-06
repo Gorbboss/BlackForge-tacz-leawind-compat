@@ -7,9 +7,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
@@ -52,14 +52,16 @@ public final class TranslucentCutawayRenderer {
                 InventoryMenu.BLOCK_ATLAS
         );
         VertexConsumer translucentBuffer = buffers.getBuffer(shaderAwareTranslucent);
+        TextureAtlasSprite blackConcrete = mc.getTextureAtlas(InventoryMenu.BLOCK_ATLAS)
+                .apply(new ResourceLocation("minecraft", "block/black_concrete"));
         BlockRenderDispatcher dispatcher = mc.getBlockRenderer();
         RandomSource random = RandomSource.create();
 
         HiddenBlockManager.beginOverlayRender();
         try {
             for (Map.Entry<BlockPos, Float> entry : blocks.entrySet()) {
-                // Restore the original block texture for all transition
-                // layers. Only the separate boundary uses black concrete.
+                // Transitional blocks keep their original textures. Black
+                // concrete remains exclusive to the outer boundary lining.
                 if (entry.getValue() <= 0.001F) continue;
                 BlockPos pos = entry.getKey();
                 BlockState state = mc.level.getBlockState(pos);
@@ -83,8 +85,6 @@ public final class TranslucentCutawayRenderer {
 
         // Draw only the camera-facing cavity boundary using Minecraft's real
         // black-concrete atlas texture. No block is placed or replaced.
-        TextureAtlasSprite blackConcrete = mc.getTextureAtlas(InventoryMenu.BLOCK_ATLAS)
-                .apply(new ResourceLocation("minecraft", "block/black_concrete"));
         poseStack.pushPose();
         poseStack.translate(-camera.getPosition().x, -camera.getPosition().y,
                 -camera.getPosition().z);
