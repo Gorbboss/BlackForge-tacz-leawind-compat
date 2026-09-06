@@ -100,7 +100,13 @@ public final class HiddenBlockManager {
     }
 
     private static void closeSmoothly(Minecraft mc) {
-        if (hidden.isEmpty()) return;
+        if (hidden.isEmpty()) {
+            if (!ShaderCutawayState.snapshot().active()) {
+                blackBoundaryFaces = Set.of();
+                cone = ConeVolume.INACTIVE;
+            }
+            return;
+        }
         HashSet<BlockPos> remaining = new HashSet<>();
         HashMap<BlockPos, Float> opacities = new HashMap<>();
         for (BlockPos pos : hidden) {
@@ -116,23 +122,6 @@ public final class HiddenBlockManager {
         if (remaining.isEmpty()) {
             cone = ConeVolume.INACTIVE;
             blackBoundaryFaces = Set.of();
-        }
-    }
-
-    private static void closeShaderOverlay(Minecraft mc) {
-        HashMap<BlockPos, Float> remaining = new HashMap<>();
-        for (Map.Entry<BlockPos, Float> entry : translucent.entrySet()) {
-            float opacity = Math.min(1.0F, entry.getValue() + VISIBILITY_STEP);
-            if (opacity < 0.999F) remaining.put(entry.getKey(), opacity);
-        }
-        translucent = Map.copyOf(remaining);
-        if (remaining.isEmpty() && !ShaderCutawayState.snapshot().active()) {
-            blackBoundaryFaces = Set.of();
-        }
-        if (!hidden.isEmpty()) {
-            Set<BlockPos> old = hidden;
-            hidden = Set.of();
-            markDirty(mc, old);
         }
     }
 
@@ -157,7 +146,8 @@ public final class HiddenBlockManager {
         if (cameraDistance < 2.05D) {
             ShaderCutawayState.deactivateSmoothly();
             if (ShaderPackDetector.isShaderPackActive()) {
-                closeShaderOverlay(mc);
+                clearHiddenBlocks(mc);
+                if (!ShaderCutawayState.snapshot().active()) blackBoundaryFaces = Set.of();
             } else closeSmoothly(mc);
             return;
         }
@@ -174,7 +164,8 @@ public final class HiddenBlockManager {
         if (!obstruction.any() && !overheadClearance) {
             ShaderCutawayState.deactivateSmoothly();
             if (ShaderPackDetector.isShaderPackActive()) {
-                closeShaderOverlay(mc);
+                clearHiddenBlocks(mc);
+                if (!ShaderCutawayState.snapshot().active()) blackBoundaryFaces = Set.of();
             } else closeSmoothly(mc);
             return;
         }
@@ -219,18 +210,13 @@ public final class HiddenBlockManager {
         int maxZ = (int) Math.floor(Math.max(start.z, end.z) + searchRadius);
 
         HashSet<BlockPos> targetMutable = new HashSet<>();
+        HashSet<BlockPos> cutawayVolume = new HashSet<>();
         HashMap<BlockPos, Float> targetTranslucent = new HashMap<>();
 
         for (int x = minX; x <= maxX; x++) {
             for (int y = minY; y <= maxY; y++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     BlockPos pos = new BlockPos(x, y, z);
-                    BlockState state = mc.level.getBlockState(pos);
-                    if (state.isAir()
-                            || state.getRenderShape() == RenderShape.INVISIBLE) {
-                        continue;
-                    }
-
                     Vec3 center = Vec3.atCenterOf(pos);
 
                     Vec3 fromStart = center.subtract(start);
@@ -269,12 +255,26 @@ public final class HiddenBlockManager {
                     double fadeEdge = innerEdge + OUTER_FADE_WIDTH;
 
                     BlockPos immutable = pos.immutable();
-                    if ((obstruction.any() && distance <= innerEdge) || cameraClearance) {
+                    boolean insideCenter = (obstruction.any() && distance <= innerEdge)
+                            || cameraClearance;
+                    boolean insideTransition = obstruction.any()
+                            && distance <= fadeEdge
+                            && obstruction.enables(center.subtract(nearest), right, up);
+                    if (!insideCenter && !insideTransition) continue;
+
+                    // The mathematical volume includes air so the fake
+                    // black-concrete boundary cannot develop side openings.
+                    cutawayVolume.add(immutable);
+
+                    BlockState state = mc.level.getBlockState(pos);
+                    if (state.isAir()
+                            || state.getRenderShape() == RenderShape.INVISIBLE) continue;
+
+                    if (insideCenter) {
                         // Fully invisible center.
                         targetMutable.add(immutable);
                         targetTranslucent.put(immutable, 0.0F);
-                    } else if (obstruction.any() && distance <= fadeEdge
-                            && obstruction.enables(center.subtract(nearest), right, up)) {
+                    } else {
                         // Smoothly blend from zero visibility at the cutaway
                         // edge to full visibility across three outer rings.
                         double progress = (distance - innerEdge) / OUTER_FADE_WIDTH;
@@ -287,18 +287,25 @@ public final class HiddenBlockManager {
         }
 
         HashSet<BoundaryFace> boundary = new HashSet<>();
-        for (BlockPos cutawayPos : targetMutable) {
+        int playerFeetY = (int) Math.floor(mc.player.getY());
+        for (BlockPos cutawayPos : cutawayVolume) {
             for (Direction outward : Direction.values()) {
                 BlockPos shellPos = cutawayPos.relative(outward);
-                if (targetMutable.contains(shellPos)) continue;
-                BlockState shellState = mc.level.getBlockState(shellPos);
-                if (!shellState.isAir()
-                        && shellState.getRenderShape() != RenderShape.INVISIBLE) {
-                    boundary.add(new BoundaryFace(shellPos.immutable(), outward.getOpposite()));
-                }
+                if (cutawayVolume.contains(shellPos)) continue;
+                // Never put the lower black-concrete face at or above the
+                // player's feet. It is allowed only beneath the player.
+                if (outward == Direction.DOWN && shellPos.getY() >= playerFeetY) continue;
+                boundary.add(new BoundaryFace(shellPos.immutable(), outward.getOpposite()));
             }
         }
         blackBoundaryFaces = Set.copyOf(boundary);
+
+        /* Shader packs perform the transparency mask themselves. The mod only
+         * supplies the air-safe black-concrete boundary in this path. */
+        if (ShaderPackDetector.isShaderPackActive()) {
+            clearHiddenBlocks(mc);
+            return;
+        }
 
         HashSet<BlockPos> animated = new HashSet<>();
         HashMap<BlockPos, Float> animatedOpacity = new HashMap<>();
@@ -321,15 +328,6 @@ public final class HiddenBlockManager {
                 animated.add(pos);
                 animatedOpacity.put(pos, opacity);
             }
-        }
-        /* With shaders, keep original chunk geometry for shadows and publish
-         * only the animated black-concrete replacement overlay. */
-        if (ShaderPackDetector.isShaderPackActive()) {
-            Set<BlockPos> oldHidden = hidden;
-            hidden = Set.of();
-            translucent = Map.copyOf(animatedOpacity);
-            if (!oldHidden.isEmpty()) markDirty(mc, oldHidden);
-            return;
         }
         publish(mc, animated, animatedOpacity);
     }

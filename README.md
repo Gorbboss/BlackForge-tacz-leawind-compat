@@ -1,5 +1,16 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
+## BlackForge v0.4.6 air-safe boundary test
+
+- Restores the transition layers to their original block textures with normal
+  transparency; they are no longer replaced by black concrete.
+- Builds the black-concrete boundary from the complete mathematical cutaway
+  volume, including air positions, so side openings cannot reveal terrain.
+- Suppresses downward-facing black-concrete boundary faces unless their fake
+  boundary position is below the player's feet.
+- Keeps the eight-sector wedges and last-obstruction endpoint from v0.4.5.
+- Use BlackForge Unbound 1.8 for the matching shader package.
+
 ## BlackForge v0.4.5 eight-sector cutaway test
 
 - Splits the 3x3 corridor into eight camera-plane sectors surrounding its

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.6
+
+- Reverts transition layers from black concrete to original textured transparency.
+- Generates the black-concrete boundary through air as well as solid terrain.
+- Limits bottom boundary faces to positions below the player.
+- Pairs with BlackForge Unbound 1.8.
+
 ## 0.4.5
 
 - Replaces four directional sides with eight pie-like cutaway sectors.
