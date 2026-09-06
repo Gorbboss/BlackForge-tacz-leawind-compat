@@ -1,5 +1,6 @@
 package com.blackforge.taczleawind.client;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
 /** Immutable per-frame data consumed by the optional Oculus uniform bridge. */
@@ -9,11 +10,14 @@ public final class ShaderCutawayState {
     private static Vec3 lastEnd = Vec3.ZERO;
     private static Vec3 lastRight = Vec3.ZERO;
     private static Vec3 lastUp = Vec3.ZERO;
-    private static float centerFade;
-    private static float crossFade;
+    private static BlockPos lastCameraBlock = BlockPos.ZERO;
+    private static float nearFade;
+    private static float middleFade;
+    private static float farFade;
     private static float fullFade;
 
     static void activate(
+            BlockPos cameraBlock,
             Vec3 start,
             Vec3 end,
             Vec3 right,
@@ -23,42 +27,46 @@ public final class ShaderCutawayState {
             double tubeRadius,
             double outerFadeWidth
     ) {
+        lastCameraBlock = cameraBlock;
         lastStart = start;
         lastEnd = end;
         lastRight = right;
         lastUp = up;
-        centerFade = Math.min(1.0F, centerFade + 1.0F / 5.0F);
-        crossFade = Math.min(1.0F, crossFade + 1.0F / 10.0F);
+        nearFade = Math.min(1.0F, nearFade + 1.0F / 5.0F);
+        middleFade = Math.min(1.0F, middleFade + 1.0F / 10.0F);
+        farFade = Math.min(1.0F, farFade + 1.0F / 15.0F);
         fullFade = Math.min(1.0F, fullFade + 1.0F / 20.0F);
         snapshot = new Snapshot(
-                true, start, end, right, up,
+                true, cameraBlock, start, end, right, up,
                 (float) taperLength,
                 (float) endRadius,
                 (float) tubeRadius,
                 (float) outerFadeWidth,
-                centerFade, crossFade, fullFade
+                nearFade, middleFade, farFade, fullFade
         );
     }
 
     static void deactivateGradually() {
-        centerFade = Math.max(0.0F, centerFade - 1.0F / 20.0F);
-        crossFade = Math.max(0.0F, crossFade - 1.0F / 20.0F);
+        nearFade = Math.max(0.0F, nearFade - 1.0F / 20.0F);
+        middleFade = Math.max(0.0F, middleFade - 1.0F / 20.0F);
+        farFade = Math.max(0.0F, farFade - 1.0F / 20.0F);
         fullFade = Math.max(0.0F, fullFade - 1.0F / 20.0F);
-        if (centerFade == 0.0F && crossFade == 0.0F && fullFade == 0.0F) {
+        if (nearFade == 0.0F && middleFade == 0.0F && farFade == 0.0F && fullFade == 0.0F) {
             snapshot = Snapshot.INACTIVE;
             return;
         }
         Snapshot old = snapshot;
         snapshot = new Snapshot(
-                true, lastStart, lastEnd, lastRight, lastUp,
+                true, lastCameraBlock, lastStart, lastEnd, lastRight, lastUp,
                 old.taperLength(), old.endRadius(), old.tubeRadius(),
-                old.outerFadeWidth(), centerFade, crossFade, fullFade
+                old.outerFadeWidth(), nearFade, middleFade, farFade, fullFade
         );
     }
 
     static void clear() {
-        centerFade = 0.0F;
-        crossFade = 0.0F;
+        nearFade = 0.0F;
+        middleFade = 0.0F;
+        farFade = 0.0F;
         fullFade = 0.0F;
         snapshot = Snapshot.INACTIVE;
     }
@@ -69,6 +77,7 @@ public final class ShaderCutawayState {
 
     public record Snapshot(
             boolean active,
+            BlockPos cameraBlock,
             Vec3 start,
             Vec3 end,
             Vec3 right,
@@ -77,13 +86,14 @@ public final class ShaderCutawayState {
             float endRadius,
             float tubeRadius,
             float outerFadeWidth,
-            float centerFade,
-            float crossFade,
+            float nearFade,
+            float middleFade,
+            float farFade,
             float fullFade
     ) {
         private static final Snapshot INACTIVE = new Snapshot(
-                false, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO,
-                0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F
+                false, BlockPos.ZERO, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO,
+                0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F
         );
     }
 

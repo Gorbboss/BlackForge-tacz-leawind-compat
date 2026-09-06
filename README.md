@@ -1,5 +1,15 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
+## BlackForge v0.4.1 staged cutaway update
+
+- The exact block occupied by the camera becomes invisible immediately.
+- The direct up, down, left, and right band fades in 0.25 seconds.
+- Corners and the next cardinal positions fade in 0.50 seconds.
+- The following ring fades in 0.75 seconds.
+- The remaining cutaway fades in 1.00 second.
+- Shader mode publishes `bfCutawayCameraBlock` and a four-component
+  `bfCutawayFade`; use BlackForge Unbound 1.3 or newer.
+
 ## BlackForge v0.4.0 (build #55 baseline)
 
 - Preserves the confirmed working six-tick eased camera cutaway activation.
@@ -23,7 +33,8 @@
 - `bfCutawayActive` - 1 while the camera mask or its return fade is active.
 - `bfCutawayStart`, `bfCutawayEnd` - world-space corridor endpoints.
 - `bfCutawayRight`, `bfCutawayUp` - camera-plane basis vectors.
-- `bfCutawayFade` - center, cardinal-cross, and full-area fade progress.
+- `bfCutawayCameraBlock` - integer world position of the camera's occupied block.
+- `bfCutawayFade` - 0.25, 0.50, 0.75, and 1.00 second fade-band progress.
 - `bfCutawayShape` - taper length, end radius, tube radius, and outer fade width.
 
 Photon must consume these only from its main-camera terrain programs. Shadow

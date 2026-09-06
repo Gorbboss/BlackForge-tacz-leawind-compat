@@ -28,10 +28,15 @@ public final class OculusUniformBridge {
                     () -> vector(ShaderCutawayState.snapshot().right()));
             addVec3(holder, perFrame, "bfCutawayUp",
                     () -> vector(ShaderCutawayState.snapshot().up()));
-            addVec3(holder, perFrame, "bfCutawayFade", () -> {
+            addVec3(holder, perFrame, "bfCutawayCameraBlock", () -> {
+                net.minecraft.core.BlockPos pos = ShaderCutawayState.snapshot().cameraBlock();
+                return new Vector3f(pos.getX(), pos.getY(), pos.getZ());
+            });
+            addVec4(holder, perFrame, "bfCutawayFade", () -> {
                 ShaderCutawayState.Snapshot state = ShaderCutawayState.snapshot();
-                return new Vector3f(
-                        state.centerFade(), state.crossFade(), state.fullFade()
+                return new Vector4f(
+                        state.nearFade(), state.middleFade(),
+                        state.farFade(), state.fullFade()
                 );
             });
             addVec4(holder, perFrame, "bfCutawayShape", () -> {

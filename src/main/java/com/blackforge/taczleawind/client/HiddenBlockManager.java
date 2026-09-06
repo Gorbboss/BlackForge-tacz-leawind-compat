@@ -35,8 +35,9 @@ public final class HiddenBlockManager {
      */
     private static final double OUTER_FADE_WIDTH = 3.0D;
     private static final double TRIGGER_RAY_OFFSET = 0.85D;
-    private static final int CENTER_FADE_TICKS = 5;   // 0.25 seconds
-    private static final int CROSS_FADE_TICKS = 10;  // 0.50 seconds
+    private static final int NEAR_FADE_TICKS = 5;    // 0.25 seconds
+    private static final int MIDDLE_FADE_TICKS = 10; // 0.50 seconds
+    private static final int FAR_FADE_TICKS = 15;    // 0.75 seconds
     private static final int FULL_FADE_TICKS = 20;   // 1.00 second
     private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
             ThreadLocal.withInitial(() -> false);
@@ -142,6 +143,7 @@ public final class HiddenBlockManager {
 
         Camera camera = mc.gameRenderer.getMainCamera();
         Vec3 cameraPos = camera.getPosition();
+        BlockPos cameraBlock = BlockPos.containing(cameraPos);
         Vec3 playerPos = mc.player.getEyePosition(1.0F)
                 .add(0.0D, -0.30D, 0.0D);
 
@@ -192,7 +194,7 @@ public final class HiddenBlockManager {
                 (int) Math.floor(mc.player.getY()) + 1
         );
         ShaderCutawayState.activate(
-                start, end, right, up, taperLength,
+                cameraBlock, start, end, right, up, taperLength,
                 END_RADIUS, TUBE_RADIUS, OUTER_FADE_WIDTH
         );
 
@@ -267,10 +269,10 @@ public final class HiddenBlockManager {
                         // Fully invisible center.
                         targetMutable.add(immutable);
                         targetTranslucent.put(immutable, 0.0F);
-                        targetFadeTicks.put(
-                                immutable,
-                                fadeTicksFor(center.subtract(nearest), right, up)
-                        );
+                        targetFadeTicks.put(immutable,
+                                immutable.equals(cameraBlock)
+                                        ? 0
+                                        : fadeTicksFor(center.subtract(nearest), right, up));
                     } else if (distance <= fadeEdge) {
                         // Smoothly blend from zero visibility at the cutaway
                         // edge to full visibility across three outer rings.
@@ -292,7 +294,9 @@ public final class HiddenBlockManager {
                     ? translucent.getOrDefault(pos, target)
                     : 1.0F;
             int duration = targetFadeTicks.getOrDefault(pos, FULL_FADE_TICKS);
-            float opacity = Math.max(target, previous - 1.0F / duration);
+            float opacity = duration == 0
+                    ? target
+                    : Math.max(target, previous - 1.0F / duration);
             if (opacity > 0.001F) {
                 animatedTranslucent.put(pos, opacity);
             }
@@ -365,20 +369,17 @@ public final class HiddenBlockManager {
     private static int fadeTicksFor(Vec3 fromAxis, Vec3 right, Vec3 up) {
         double horizontal = fromAxis.dot(right);
         double vertical = fromAxis.dot(up);
-        double centerDistance = Math.hypot(horizontal, vertical);
-        if (centerDistance <= 0.65D) return CENTER_FADE_TICKS;
+        int horizontalStep = (int) Math.round(Math.abs(horizontal) / TRIGGER_RAY_OFFSET);
+        int verticalStep = (int) Math.round(Math.abs(vertical) / TRIGGER_RAY_OFFSET);
+        int taxiDistance = horizontalStep + verticalStep;
+        int squareDistance = Math.max(horizontalStep, verticalStep);
 
-        double cardinalDistance = Math.min(
-                Math.min(
-                        Math.hypot(horizontal - TRIGGER_RAY_OFFSET, vertical),
-                        Math.hypot(horizontal + TRIGGER_RAY_OFFSET, vertical)
-                ),
-                Math.min(
-                        Math.hypot(horizontal, vertical - TRIGGER_RAY_OFFSET),
-                        Math.hypot(horizontal, vertical + TRIGGER_RAY_OFFSET)
-                )
-        );
-        if (cardinalDistance <= 0.75D) return CROSS_FADE_TICKS;
+        // Center line and the four directly adjacent cardinal positions.
+        if (taxiDistance <= 1) return NEAR_FADE_TICKS;
+        // Corners and the next cardinal positions one block farther out.
+        if (squareDistance <= 1 || taxiDistance <= 2) return MIDDLE_FADE_TICKS;
+        // The next surrounding ring.
+        if (squareDistance <= 2 || taxiDistance <= 3) return FAR_FADE_TICKS;
         return FULL_FADE_TICKS;
     }
 
