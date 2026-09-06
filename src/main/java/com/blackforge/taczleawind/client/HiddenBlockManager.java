@@ -24,19 +24,16 @@ import java.util.Set;
 public final class HiddenBlockManager {
     private static final double CAMERA_APEX_BACK_OFFSET = 1.0D;
     private static final double NEAR_PLAYER_END_OFFSET = 0.25D;
-    private static final double SIDE_END_OFFSET = 1.0D;
-    private static final double BOTTOM_CENTER_END_OFFSET = 2.0D;
-    // Half a block in radius gives a one-block-wide opening at each end.
-    private static final double END_RADIUS = 0.5D;
-    private static final double TUBE_RADIUS = 1.5D;
-    private static final double MAX_TAPER_LENGTH = 3.0D;
+    // Compact main tube (about 2x2) and wall-mode midpoint (about 4x4).
+    private static final double END_RADIUS = 1.0D;
+    private static final double TUBE_RADIUS = 2.0D;
 
     /*
      * Embeddium builds chunk meshes on worker threads. Always publish a
      * complete immutable snapshot.
      */
-    private static final double OUTER_FADE_WIDTH = 3.0D;
     private static final double TRIGGER_RAY_OFFSET = 0.85D;
+    private static final double MIDPOINT_WEDGE_SAMPLE_OFFSET = 1.75D;
     private static final double RELEASE_OVERLAP = 1.15D;
     private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
             ThreadLocal.withInitial(() -> false);
@@ -143,7 +140,6 @@ public final class HiddenBlockManager {
         BlockPos cameraBlock = BlockPos.containing(cameraPos);
         Vec3 playerPos = mc.player.getEyePosition(1.0F)
                 .add(0.0D, -0.30D, 0.0D);
-        boolean overheadClearance = cameraPos.y >= mc.player.getY() + 1.0D;
 
         Vec3 cameraToPlayer = playerPos.subtract(cameraPos);
         double cameraDistance = cameraToPlayer.length();
@@ -159,12 +155,10 @@ public final class HiddenBlockManager {
         Vec3 right = cameraRight(axis);
         Vec3 up = right.cross(axis).normalize();
 
-        /*
-         * Test the center plus the four cardinal edges of the camera opening.
-         * A wall clipping any one of these rays activates the cutaway early.
-         */
+        // Normal mode listens only to center and top-center. Directional
+        // wedges are populated only while the camera itself is inside terrain.
         CutawayObstruction obstruction = findObstruction(mc, cameraPos, playerPos, right, up);
-        if (!obstruction.any() && !overheadClearance) {
+        if (!obstruction.any()) {
             ShaderCutawayState.deactivateSmoothly();
             if (ShaderPackDetector.isShaderPackActive()) {
                 closeShaderOverlay(mc);
@@ -188,25 +182,26 @@ public final class HiddenBlockManager {
         Vec3 shapeAxis = end.subtract(start);
         double shapeLength = shapeAxis.length();
         Vec3 shapeDirection = shapeAxis.scale(1.0D / shapeLength);
-        double taperLength = Math.min(MAX_TAPER_LENGTH, shapeLength * 0.25D);
+        double taperLength = shapeLength * 0.5D;
 
         cone = new ConeVolume(
                 start,
                 shapeDirection,
                 shapeLength,
                 taperLength,
-                (int) Math.floor(mc.player.getY()) + 1
+                (int) Math.floor(mc.player.getY()) + 1,
+                right,
+                up,
+                obstruction
         );
         ShaderCutawayState.activate(
                 cameraBlock, start, end, right, up, taperLength,
-                END_RADIUS, TUBE_RADIUS, OUTER_FADE_WIDTH,
-                obstruction, overheadClearance
+                END_RADIUS, TUBE_RADIUS, 0.0D,
+                obstruction, obstruction.cameraInside()
         );
 
         double blockAllowance = Math.sqrt(3.0D) * 0.5D;
-        double searchRadius = TUBE_RADIUS
-                + OUTER_FADE_WIDTH
-                + blockAllowance;
+        double searchRadius = TUBE_RADIUS + blockAllowance;
         searchRadius *= RELEASE_OVERLAP;
 
         int minX = (int) Math.floor(Math.min(start.x, end.x) - searchRadius);
@@ -236,34 +231,14 @@ public final class HiddenBlockManager {
                     Vec3 fromStart = center.subtract(start);
                     double axialDistance = fromStart.dot(shapeDirection);
 
-                    // Each part of the 3x3 screen-space opening stops at its
-                    // own distance from the player: top and center are near,
-                    // left/right and bottom corners stop one block back, and
-                    // bottom-center stops two blocks back.
-                    Vec3 nearestOnAxis = start.add(
-                            shapeDirection.scale(Math.max(0.0D,
-                                    Math.min(axialDistance, shapeLength)))
-                    );
-                    Vec3 radialVector = center.subtract(nearestOnAxis);
-                    double horizontal = radialVector.dot(right);
-                    double vertical = radialVector.dot(up);
-                    double playerBackOffset = endpointOffset(
-                            horizontal, vertical,
-                            Math.sqrt(radialVector.lengthSqr()), blockAllowance
-                    );
-                    double sectorLength = Math.max(1.0D,
-                            CAMERA_APEX_BACK_OFFSET + cameraDistance
-                                    - playerBackOffset);
-
-                    // Do not hide anything beyond either end cap for this ray.
-                    if (axialDistance < 0.0D || axialDistance > sectorLength) {
+                    if (axialDistance < 0.0D || axialDistance > shapeLength) {
                         continue;
                     }
 
                     // Keep the cutaway one full block above the surface the
                     // player is standing on. Camera pitch cannot lower it.
                     int minimumHiddenY = (int) Math.floor(mc.player.getY()) + 1;
-                    boolean cameraClearance = overheadClearance
+                    boolean cameraClearance = obstruction.cameraInside()
                             && isInsideCameraClearance(pos, cameraPos);
                     if (pos.getY() < minimumHiddenY && !cameraClearance) {
                         continue;
@@ -271,8 +246,8 @@ public final class HiddenBlockManager {
 
                     double radius = radiusAt(
                             axialDistance,
-                            sectorLength,
-                            Math.min(MAX_TAPER_LENGTH, sectorLength * 0.25D)
+                            shapeLength,
+                            taperLength
                     );
 
                     Vec3 nearest = start.add(
@@ -280,30 +255,24 @@ public final class HiddenBlockManager {
                     );
                     double distance = Math.sqrt(center.distanceToSqr(nearest));
                     double centerEdge = END_RADIUS + blockAllowance;
-                    double sectorStrength = obstruction.strength(
-                            center.subtract(nearest), right, up);
+                    Vec3 fromAxis = center.subtract(nearest);
+                    double horizontal = fromAxis.dot(right);
+                    double vertical = fromAxis.dot(up);
+                    double sectorStrength = obstruction.strength(fromAxis, right, up);
                     double innerEdge = centerEdge
                             + Math.max(0.0D, radius + blockAllowance - centerEdge)
                             * sectorStrength;
-                    double fadeEdge = innerEdge + OUTER_FADE_WIDTH;
-
                     BlockPos immutable = pos.immutable();
-                    int normalLayer = layerAt(distance, innerEdge, fadeEdge);
+                    int normalLayer = distance <= innerEdge ? 0 : -1;
                     if (!obstruction.any() && !cameraClearance) normalLayer = -1;
-                    int sector = sectorAt(horizontal, vertical);
-                    boolean sectorEnabled = obstruction.enables(
-                            center.subtract(nearest), right, up);
-                    if (normalLayer > 0 && !sectorEnabled) normalLayer = -1;
-                    if (normalLayer > maximumLayerForSector(sector)) normalLayer = -1;
                     Integer previousLayer = retainedLayers.get(immutable);
                     int selectedLayer = normalLayer;
                     double previousRelease = retainedReleaseRadii.getOrDefault(
                             immutable,
-                            previousLayer == null ? -1.0D : releaseBoundary(
-                                    previousLayer, innerEdge, fadeEdge));
+                            previousLayer == null ? -1.0D
+                                    : releaseBoundary(innerEdge));
                     boolean retainedPrevious = false;
                     if (previousLayer != null
-                            && previousLayer <= maximumLayerForSector(sector)
                             && (normalLayer < 0 || normalLayer > previousLayer)
                             && distance <= previousRelease) {
                         selectedLayer = previousLayer;
@@ -318,9 +287,9 @@ public final class HiddenBlockManager {
                     nextLayers.put(immutable, selectedLayer);
                     nextReleaseRadii.put(immutable, retainedPrevious
                             ? previousRelease
-                            : releaseBoundary(selectedLayer, innerEdge, fadeEdge));
-                    // Testing mode: the old center plus all three transition
-                    // rings are one fully invisible cutaway footprint.
+                            : releaseBoundary(innerEdge));
+                    // The compact tube and any enabled wall wedge are fully
+                    // invisible; there are no outer transparency rings.
                     targetMutable.add(immutable);
                     targetTranslucent.put(immutable, 0.0F);
                 }
@@ -362,62 +331,8 @@ public final class HiddenBlockManager {
         boundaryFaces = Map.copyOf(next);
     }
 
-    private static int layerAt(
-            double distance, double innerEdge, double fadeEdge
-    ) {
-        if (distance <= innerEdge) return 0;
-        if (distance > fadeEdge) return -1;
-        double layerWidth = (fadeEdge - innerEdge) / 3.0D;
-        if (distance <= innerEdge + layerWidth) return 1;
-        if (distance <= innerEdge + layerWidth * 2.0D) return 2;
-        return 3;
-    }
-
-    private static double endpointOffset(
-            double horizontal, double vertical,
-            double radialDistance, double blockAllowance
-    ) {
-        // The center camera ray reaches right up to the player.
-        if (radialDistance <= END_RADIUS + blockAllowance) {
-            return NEAR_PLAYER_END_OFFSET;
-        }
-
-        int sector = sectorAt(horizontal, vertical);
-        return switch (sector) {
-            // up-right, up, up-left
-            case 1, 2, 3 -> NEAR_PLAYER_END_OFFSET;
-            // bottom-center
-            case 6 -> BOTTOM_CENTER_END_OFFSET;
-            // right, left, bottom-left, bottom-right
-            default -> SIDE_END_OFFSET;
-        };
-    }
-
-    private static int sectorAt(double horizontal, double vertical) {
-        double angle = Math.atan2(vertical, horizontal);
-        return Math.floorMod((int) Math.floor(
-                angle / (Math.PI * 0.25D) + 0.5D), 8);
-    }
-
-    private static int maximumLayerForSector(int sector) {
-        return switch (sector) {
-            case 6 -> 1;       // bottom-center
-            case 5, 7 -> 2;    // bottom-left and bottom-right
-            default -> 3;      // sides and all three upper wedges
-        };
-    }
-
-    private static double releaseBoundary(
-            int layer, double innerEdge, double fadeEdge
-    ) {
-        double normalBoundary;
-        if (layer <= 0) {
-            normalBoundary = innerEdge;
-        } else {
-            double layerWidth = (fadeEdge - innerEdge) / 3.0D;
-            normalBoundary = innerEdge + layerWidth * Math.min(layer, 3);
-        }
-        return normalBoundary * RELEASE_OVERLAP;
+    private static double releaseBoundary(double innerEdge) {
+        return innerEdge * RELEASE_OVERLAP;
     }
 
     private static void publish(
@@ -448,26 +363,46 @@ public final class HiddenBlockManager {
             Vec3 right,
             Vec3 up
     ) {
-        boolean any = false;
+        double centerLast = lastObstructionDistance(mc, cameraPos, playerPos);
+        double topLast = lastObstructionDistance(
+                mc,
+                cameraPos.add(up.scale(TRIGGER_RAY_OFFSET)),
+                playerPos.add(up.scale(TRIGGER_RAY_OFFSET))
+        );
+        boolean cameraInside = isSolidAt(mc, BlockPos.containing(cameraPos));
+        boolean any = centerLast >= 0.0D || topLast >= 0.0D || cameraInside;
         double lastDistance = 0.0D;
         float[] sectors = new float[8];
-        for (int horizontal = -1; horizontal <= 1; horizontal++) {
-            for (int vertical = -1; vertical <= 1; vertical++) {
-                Vec3 offset = right.scale(horizontal * TRIGGER_RAY_OFFSET)
-                        .add(up.scale(vertical * TRIGGER_RAY_OFFSET));
-                double rayLast = lastObstructionDistance(
-                        mc, cameraPos.add(offset), playerPos.add(offset));
-                if (rayLast < 0.0D) continue;
-                any = true;
-                lastDistance = Math.max(lastDistance, rayLast);
-                if (horizontal == 0 && vertical == 0) continue;
-                int sector = sectorIndex(horizontal, vertical);
-                sectors[sector] = 1.0F;
-                sectors[(sector + 1) & 7] = Math.max(sectors[(sector + 1) & 7], 0.65F);
-                sectors[(sector + 7) & 7] = Math.max(sectors[(sector + 7) & 7], 0.65F);
+        if (centerLast >= 0.0D) lastDistance = Math.max(lastDistance, centerLast);
+        if (topLast >= 0.0D) lastDistance = Math.max(lastDistance, topLast);
+
+        if (cameraInside) {
+            Vec3 midpoint = cameraPos.add(playerPos).scale(0.5D);
+            for (int horizontal = -1; horizontal <= 1; horizontal++) {
+                for (int vertical = -1; vertical <= 1; vertical++) {
+                    if (horizontal == 0 && vertical == 0) continue;
+                    Vec3 sample = midpoint
+                            .add(right.scale(horizontal * MIDPOINT_WEDGE_SAMPLE_OFFSET))
+                            .add(up.scale(vertical * MIDPOINT_WEDGE_SAMPLE_OFFSET));
+                    if (!isSolidAt(mc, BlockPos.containing(sample))) continue;
+                    int sector = sectorIndex(horizontal, vertical);
+                    sectors[sector] = 1.0F;
+                    sectors[(sector + 1) & 7] = Math.max(
+                            sectors[(sector + 1) & 7], 0.65F);
+                    sectors[(sector + 7) & 7] = Math.max(
+                            sectors[(sector + 7) & 7], 0.65F);
+                }
             }
         }
-        return new CutawayObstruction(any, lastDistance, sectors);
+        return new CutawayObstruction(any, cameraInside, lastDistance, sectors);
+    }
+
+    private static boolean isSolidAt(Minecraft mc, BlockPos pos) {
+        BlockState state = mc.level.getBlockState(pos);
+        return !state.isAir()
+                && !state.canBeReplaced()
+                && state.getRenderShape() != RenderShape.INVISIBLE
+                && !state.getCollisionShape(mc.level, pos).isEmpty();
     }
 
     private static double lastObstructionDistance(
@@ -485,6 +420,7 @@ public final class HiddenBlockManager {
             previous = pos;
             BlockState state = mc.level.getBlockState(pos);
             if (!state.isAir()
+                    && !state.canBeReplaced()
                     && state.getRenderShape() != RenderShape.INVISIBLE
                     && !state.getCollisionShape(mc.level, pos).isEmpty()) {
                 last = distance;
@@ -514,7 +450,10 @@ public final class HiddenBlockManager {
                 && pos.getZ() >= minZ && pos.getZ() <= minZ + 1;
     }
 
-    record CutawayObstruction(boolean any, double lastDistance, float[] sectors) {
+    record CutawayObstruction(
+            boolean any, boolean cameraInside,
+            double lastDistance, float[] sectors
+    ) {
         float strength(Vec3 fromAxis, Vec3 rightVector, Vec3 upVector) {
             double horizontal = fromAxis.dot(rightVector);
             double vertical = fromAxis.dot(upVector);
@@ -571,10 +510,17 @@ public final class HiddenBlockManager {
             Vec3 direction,
             double length,
             double taperLength,
-            int minimumY
+            int minimumY,
+            Vec3 right,
+            Vec3 up,
+            CutawayObstruction obstruction
     ) {
         private static final ConeVolume INACTIVE =
-                new ConeVolume(Vec3.ZERO, Vec3.ZERO, 0.0D, 0.0D, Integer.MAX_VALUE);
+                new ConeVolume(
+                        Vec3.ZERO, Vec3.ZERO, 0.0D, 0.0D,
+                        Integer.MAX_VALUE, Vec3.ZERO, Vec3.ZERO,
+                        new CutawayObstruction(false, false, 0.0D, new float[8])
+                );
 
         private boolean contains(AABB box) {
             if (length <= 0.0D || box.maxY < minimumY) return false;
@@ -583,14 +529,16 @@ public final class HiddenBlockManager {
             double axial = center.subtract(start).dot(direction);
             if (axial < 0.0D || axial > length) return false;
 
-            double radius = radiusAt(axial, length, taperLength);
-
             double entityAllowance = 0.5D * Math.sqrt(
                     box.getXsize() * box.getXsize()
                             + box.getYsize() * box.getYsize()
                             + box.getZsize() * box.getZsize()
             );
             Vec3 nearest = start.add(direction.scale(axial));
+            Vec3 fromAxis = center.subtract(nearest);
+            double wedgeStrength = obstruction.strength(fromAxis, right, up);
+            double radius = END_RADIUS + (radiusAt(axial, length, taperLength)
+                    - END_RADIUS) * wedgeStrength;
             double accepted = radius + entityAllowance;
             return center.distanceToSqr(nearest) <= accepted * accepted;
         }
@@ -601,19 +549,11 @@ public final class HiddenBlockManager {
             double shapeLength,
             double taperLength
     ) {
-        if (taperLength <= 0.0D) return END_RADIUS;
-        if (axialDistance < taperLength) {
-            return END_RADIUS
-                    + (TUBE_RADIUS - END_RADIUS)
-                    * (axialDistance / taperLength);
-        }
-        double closingStart = shapeLength - taperLength;
-        if (axialDistance > closingStart) {
-            return TUBE_RADIUS
-                    + (END_RADIUS - TUBE_RADIUS)
-                    * ((axialDistance - closingStart) / taperLength);
-        }
-        return TUBE_RADIUS;
+        if (shapeLength <= 0.0D) return END_RADIUS;
+        double progress = Math.max(0.0D, Math.min(1.0D,
+                axialDistance / shapeLength));
+        double middleStrength = 1.0D - Math.abs(progress * 2.0D - 1.0D);
+        return END_RADIUS + (TUBE_RADIUS - END_RADIUS) * middleStrength;
     }
 
     private HiddenBlockManager() {}

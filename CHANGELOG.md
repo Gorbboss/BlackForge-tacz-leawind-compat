@@ -78,3 +78,12 @@
   are now immediate.
 - Limited bottom-center to one outer layer and both lower corners to two outer
   layers. Side and upper wedges retain all three layers.
+## 0.4.13
+
+- Normal obstruction mode now listens only to the center and top-center rays
+  and opens a constant compact 2x2 camera-to-player tube.
+- Directional wedges now exist only while the camera occupies solid terrain.
+- Eight samples around the 4x4 midpoint select the active wall-mode wedges.
+- Wall-mode wedges taper from approximately 2x2 at both ends to 4x4 at the
+  midpoint, with no additional outer transition rings.
+- Replaceable vegetation such as grass and flowers cannot trigger either mode.
