@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.4
+
+- Replaces the untextured black shell with inward-facing black-concrete quads.
+- Uses the vanilla black-concrete atlas texture without placing world blocks.
+- Makes the same client-only boundary renderer available with shaders enabled.
+- Pairs with BlackForge Unbound 1.6.
+
 ## 0.4.3
 
 - Adds proportional one-second smoothing to outer cutaway visibility.

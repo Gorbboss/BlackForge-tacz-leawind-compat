@@ -86,12 +86,12 @@ public final class HiddenBlockManager {
     private static void clearImmediately(Minecraft mc) {
         ShaderCutawayState.clear();
         cone = ConeVolume.INACTIVE;
-        clearHiddenGeometry(mc);
+        blackBoundaryFaces = Set.of();
+        clearHiddenBlocks(mc);
     }
 
-    private static void clearHiddenGeometry(Minecraft mc) {
+    private static void clearHiddenBlocks(Minecraft mc) {
         translucent = Map.of();
-        blackBoundaryFaces = Set.of();
         Set<BlockPos> old = hidden;
         if (old.isEmpty()) return;
 
@@ -139,7 +139,12 @@ public final class HiddenBlockManager {
         double cameraDistance = cameraToPlayer.length();
         if (cameraDistance < 2.05D) {
             ShaderCutawayState.deactivateSmoothly();
-            closeSmoothly(mc);
+            if (ShaderPackDetector.isShaderPackActive()) {
+                clearHiddenBlocks(mc);
+                if (!ShaderCutawayState.snapshot().active()) {
+                    blackBoundaryFaces = Set.of();
+                }
+            } else closeSmoothly(mc);
             return;
         }
 
@@ -154,8 +159,12 @@ public final class HiddenBlockManager {
         DirectionalObstruction obstruction = findObstruction(mc, cameraPos, playerPos, right, up);
         if (!obstruction.any() && !overheadClearance) {
             ShaderCutawayState.deactivateSmoothly();
-            if (ShaderPackDetector.isShaderPackActive()) clearHiddenGeometry(mc);
-            else closeSmoothly(mc);
+            if (ShaderPackDetector.isShaderPackActive()) {
+                clearHiddenBlocks(mc);
+                if (!ShaderCutawayState.snapshot().active()) {
+                    blackBoundaryFaces = Set.of();
+                }
+            } else closeSmoothly(mc);
             return;
         }
 
@@ -180,16 +189,6 @@ public final class HiddenBlockManager {
                 END_RADIUS, TUBE_RADIUS, OUTER_FADE_WIDTH,
                 obstruction, overheadClearance
         );
-
-        /*
-         * With shaders, Photon performs the camera-only fragment mask. Keep
-         * the normal chunk geometry intact so Oculus's shadow pass still sees
-         * every original block.
-         */
-        if (ShaderPackDetector.isShaderPackActive()) {
-            clearHiddenGeometry(mc);
-            return;
-        }
 
         double blockAllowance = Math.sqrt(3.0D) * 0.5D;
         double searchRadius = TUBE_RADIUS
@@ -279,6 +278,13 @@ public final class HiddenBlockManager {
             }
         }
         blackBoundaryFaces = Set.copyOf(boundary);
+
+        /* With shaders, only the fake boundary lining is rendered by the mod.
+         * Original chunk geometry stays intact for the shadow pass. */
+        if (ShaderPackDetector.isShaderPackActive()) {
+            clearHiddenBlocks(mc);
+            return;
+        }
 
         HashSet<BlockPos> animated = new HashSet<>();
         HashMap<BlockPos, Float> animatedOpacity = new HashMap<>();

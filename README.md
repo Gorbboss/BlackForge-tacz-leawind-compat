@@ -1,5 +1,16 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
+## BlackForge v0.4.4 black-concrete boundary lining
+
+- Removes the experimental untextured black boundary treatment.
+- Renders only the inward-facing boundary quads with Minecraft's actual
+  `minecraft:block/black_concrete` atlas texture.
+- The lining is client-only geometry: it never places blocks and has no
+  collision, interaction, drops, or server state.
+- Generates the same lining with or without shaders while leaving original
+  terrain in shader shadow passes.
+- Use BlackForge Unbound 1.6 for the matching shader package.
+
 ## BlackForge v0.4.3 smoothed cutaway and black boundary
 
 - Keeps the center corridor and active camera-clearance box instant.
@@ -8,9 +19,7 @@
   take proportionally less time.
 - Restores every departing cutaway block over one second from its current
   visibility, including blocks that were fully invisible.
-- Draws a camera-only black boundary face around the cutaway and closes its
-  ends to prevent unintended views through terrain.
-- Use BlackForge Unbound 1.5 for the matching shader implementation.
+- Draws an experimental camera-only black boundary face around the cutaway.
 
 ## BlackForge v0.4.2 directional spatial cutaway
 

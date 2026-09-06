@@ -6,11 +6,13 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.level.block.state.BlockState;
@@ -87,23 +89,27 @@ public final class TranslucentCutawayRenderer {
         }
 
 
-        // Draw only the camera-facing cavity boundary, never replacement world
-        // blocks. This creates the intentional black anti-X-ray shell.
+        // Draw only the camera-facing cavity boundary using Minecraft's real
+        // black-concrete atlas texture. No block is placed or replaced.
+        TextureAtlasSprite blackConcrete = mc.getTextureAtlas(InventoryMenu.BLOCK_ATLAS)
+                .apply(new ResourceLocation("minecraft", "block/black_concrete"));
         poseStack.pushPose();
         poseStack.translate(-camera.getPosition().x, -camera.getPosition().y,
                 -camera.getPosition().z);
         PoseStack.Pose pose = poseStack.last();
         for (HiddenBlockManager.BoundaryFace face : boundary) {
-            emitBlackFace(translucentBuffer, pose, face.pos(), face.face());
+            int light = LevelRenderer.getLightColor(mc.level, face.pos());
+            emitBlackConcreteFace(translucentBuffer, pose, face.pos(),
+                    face.face(), blackConcrete, light);
         }
         poseStack.popPose();
 
         buffers.endBatch(shaderAwareTranslucent);
     }
 
-    private static void emitBlackFace(
+    private static void emitBlackConcreteFace(
             VertexConsumer consumer, PoseStack.Pose pose,
-            BlockPos pos, Direction face
+            BlockPos pos, Direction face, TextureAtlasSprite sprite, int light
     ) {
         float x = pos.getX(), y = pos.getY(), z = pos.getZ();
         float e = 0.001F;
@@ -118,12 +124,14 @@ public final class TranslucentCutawayRenderer {
         Matrix4f matrix = pose.pose();
         Matrix3f normal = pose.normal();
         float nx = face.getStepX(), ny = face.getStepY(), nz = face.getStepZ();
+        float u0 = sprite.getU0(), u1 = sprite.getU1();
+        float v0 = sprite.getV0(), v1 = sprite.getV1();
         for (int i = 0; i < 4; i++) {
             consumer.vertex(matrix, vertices[i][0], vertices[i][1], vertices[i][2])
-                    .color(0, 0, 0, 255)
-                    .uv((i == 1 || i == 2) ? 1.0F : 0.0F, i >= 2 ? 1.0F : 0.0F)
+                    .color(255, 255, 255, 255)
+                    .uv((i == 1 || i == 2) ? u1 : u0, i >= 2 ? v1 : v0)
                     .overlayCoords(OverlayTexture.NO_OVERLAY)
-                    .uv2(LightTexture.FULL_BRIGHT)
+                    .uv2(light)
                     .normal(normal, nx, ny, nz)
                     .endVertex();
         }
