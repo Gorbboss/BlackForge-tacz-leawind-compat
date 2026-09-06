@@ -37,8 +37,6 @@ public final class HiddenBlockManager {
      */
     private static final double OUTER_FADE_WIDTH = 3.0D;
     private static final double TRIGGER_RAY_OFFSET = 0.85D;
-    private static final float VISIBILITY_STEP = 1.0F / 20.0F;
-    private static final float BOUNDARY_OPACITY_STEP = 1.0F / 5.0F;
     private static final double RELEASE_OVERLAP = 1.15D;
     private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
             ThreadLocal.withInitial(() -> false);
@@ -111,40 +109,19 @@ public final class HiddenBlockManager {
 
     private static void closeSmoothly(Minecraft mc) {
         updateBoundary(Set.of());
-        if (hidden.isEmpty()) return;
-        HashSet<BlockPos> remaining = new HashSet<>();
-        HashMap<BlockPos, Float> opacities = new HashMap<>();
-        for (BlockPos pos : hidden) {
-            float opacity = Math.min(1.0F,
-                    translucent.getOrDefault(pos, 0.0F) + VISIBILITY_STEP);
-            if (opacity < 0.999F) {
-                remaining.add(pos);
-                opacities.put(pos, opacity);
-            }
-        }
-
-        publish(mc, remaining, opacities);
-        if (remaining.isEmpty()) {
-            cone = ConeVolume.INACTIVE;
-            retainedLayers = Map.of();
-            retainedReleaseRadii = Map.of();
-            retainedEndDistance = -1.0D;
-        }
+        clearHiddenBlocks(mc);
+        cone = ConeVolume.INACTIVE;
+        retainedLayers = Map.of();
+        retainedReleaseRadii = Map.of();
+        retainedEndDistance = -1.0D;
     }
 
     private static void closeShaderOverlay(Minecraft mc) {
         updateBoundary(Set.of());
-        HashMap<BlockPos, Float> remaining = new HashMap<>();
-        for (Map.Entry<BlockPos, Float> entry : translucent.entrySet()) {
-            float opacity = Math.min(1.0F, entry.getValue() + VISIBILITY_STEP);
-            if (opacity < 0.999F) remaining.put(entry.getKey(), opacity);
-        }
-        translucent = Map.copyOf(remaining);
-        if (remaining.isEmpty() && !ShaderCutawayState.snapshot().active()) {
-            retainedLayers = Map.of();
-            retainedReleaseRadii = Map.of();
-            retainedEndDistance = -1.0D;
-        }
+        translucent = Map.of();
+        retainedLayers = Map.of();
+        retainedReleaseRadii = Map.of();
+        retainedEndDistance = -1.0D;
         if (!hidden.isEmpty()) {
             Set<BlockPos> old = hidden;
             hidden = Set.of();
@@ -313,9 +290,11 @@ public final class HiddenBlockManager {
                     BlockPos immutable = pos.immutable();
                     int normalLayer = layerAt(distance, innerEdge, fadeEdge);
                     if (!obstruction.any() && !cameraClearance) normalLayer = -1;
+                    int sector = sectorAt(horizontal, vertical);
                     boolean sectorEnabled = obstruction.enables(
                             center.subtract(nearest), right, up);
                     if (normalLayer > 0 && !sectorEnabled) normalLayer = -1;
+                    if (normalLayer > maximumLayerForSector(sector)) normalLayer = -1;
                     Integer previousLayer = retainedLayers.get(immutable);
                     int selectedLayer = normalLayer;
                     double previousRelease = retainedReleaseRadii.getOrDefault(
@@ -324,6 +303,7 @@ public final class HiddenBlockManager {
                                     previousLayer, innerEdge, fadeEdge));
                     boolean retainedPrevious = false;
                     if (previousLayer != null
+                            && previousLayer <= maximumLayerForSector(sector)
                             && (normalLayer < 0 || normalLayer > previousLayer)
                             && distance <= previousRelease) {
                         selectedLayer = previousLayer;
@@ -363,57 +343,21 @@ public final class HiddenBlockManager {
         }
         updateBoundary(boundary);
 
-        HashSet<BlockPos> animated = new HashSet<>();
-        HashMap<BlockPos, Float> animatedOpacity = new HashMap<>();
-        for (BlockPos pos : targetMutable) {
-            float target = targetTranslucent.getOrDefault(pos, 0.0F);
-            float previous = translucent.containsKey(pos)
-                    ? translucent.get(pos) : 1.0F;
-            // The center corridor and camera-clearance box open immediately.
-            float opacity = target <= 0.001F ? 0.0F
-                    : moveToward(previous, target, VISIBILITY_STEP);
-            animated.add(pos);
-            animatedOpacity.put(pos, opacity);
-        }
-        // Everything leaving the moving cutaway takes one second to return.
-        for (BlockPos pos : translucent.keySet()) {
-            if (targetMutable.contains(pos)) continue;
-            float opacity = Math.min(1.0F,
-                    translucent.getOrDefault(pos, 0.0F) + VISIBILITY_STEP);
-            if (opacity < 0.999F) {
-                animated.add(pos);
-                animatedOpacity.put(pos, opacity);
-            }
-        }
-        /* With shaders, keep original chunk geometry for shadows and publish
-         * only the animated black-concrete replacement overlay. */
+        // Visibility now switches immediately in both directions.
         if (ShaderPackDetector.isShaderPackActive()) {
             Set<BlockPos> oldHidden = hidden;
             hidden = Set.of();
-            translucent = Map.copyOf(animatedOpacity);
+            translucent = Map.copyOf(targetTranslucent);
             if (!oldHidden.isEmpty()) markDirty(mc, oldHidden);
             return;
         }
-        publish(mc, animated, animatedOpacity);
-    }
-
-    private static float moveToward(float value, float target, float amount) {
-        if (value < target) return Math.min(target, value + amount);
-        return Math.max(target, value - amount);
+        publish(mc, targetMutable, targetTranslucent);
     }
 
     private static void updateBoundary(Set<BoundaryFace> target) {
         HashMap<BoundaryFace, Float> next = new HashMap<>();
         for (BoundaryFace face : target) {
-            float opacity = Math.min(1.0F,
-                    boundaryFaces.getOrDefault(face, 0.0F) + BOUNDARY_OPACITY_STEP);
-            next.put(face, opacity);
-        }
-        for (Map.Entry<BoundaryFace, Float> entry : boundaryFaces.entrySet()) {
-            if (target.contains(entry.getKey())) continue;
-            float opacity = Math.max(0.0F,
-                    entry.getValue() - BOUNDARY_OPACITY_STEP);
-            if (opacity > 0.001F) next.put(entry.getKey(), opacity);
+            next.put(face, 1.0F);
         }
         boundaryFaces = Map.copyOf(next);
     }
@@ -438,9 +382,7 @@ public final class HiddenBlockManager {
             return NEAR_PLAYER_END_OFFSET;
         }
 
-        double angle = Math.atan2(vertical, horizontal);
-        int sector = (int) Math.floor(angle / (Math.PI * 0.25D) + 0.5D);
-        sector = Math.floorMod(sector, 8);
+        int sector = sectorAt(horizontal, vertical);
         return switch (sector) {
             // up-right, up, up-left
             case 1, 2, 3 -> NEAR_PLAYER_END_OFFSET;
@@ -448,6 +390,20 @@ public final class HiddenBlockManager {
             case 6 -> BOTTOM_CENTER_END_OFFSET;
             // right, left, bottom-left, bottom-right
             default -> SIDE_END_OFFSET;
+        };
+    }
+
+    private static int sectorAt(double horizontal, double vertical) {
+        double angle = Math.atan2(vertical, horizontal);
+        return Math.floorMod((int) Math.floor(
+                angle / (Math.PI * 0.25D) + 0.5D), 8);
+    }
+
+    private static int maximumLayerForSector(int sector) {
+        return switch (sector) {
+            case 6 -> 1;       // bottom-center
+            case 5, 7 -> 2;    // bottom-left and bottom-right
+            default -> 3;      // sides and all three upper wedges
         };
     }
 

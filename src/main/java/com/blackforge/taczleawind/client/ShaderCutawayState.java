@@ -22,11 +22,11 @@ public final class ShaderCutawayState {
             HiddenBlockManager.CutawayObstruction obstruction,
             boolean overheadClearance
     ) {
-        corridorFade = obstruction.any() ? 1.0F : Math.max(0.0F, corridorFade - 0.05F);
+        corridorFade = obstruction.any() ? 1.0F : 0.0F;
         for (int i = 0; i < 8; i++) {
-            sectorFade[i] = move(sectorFade[i], obstruction.sector(i));
+            sectorFade[i] = obstruction.sector(i);
         }
-        overheadFade = overheadClearance ? 1.0F : Math.max(0.0F, overheadFade - 0.05F);
+        overheadFade = overheadClearance ? 1.0F : 0.0F;
         snapshot = new Snapshot(
                 true, cameraBlock, start, end, right, up,
                 (float) taperLength,
@@ -41,30 +41,7 @@ public final class ShaderCutawayState {
     }
 
     static void deactivateSmoothly() {
-        Snapshot old = snapshot;
-        if (!old.active()) return;
-        corridorFade = Math.max(0.0F, corridorFade - 0.05F);
-        for (int i = 0; i < 8; i++) {
-            sectorFade[i] = Math.max(0.0F, sectorFade[i] - 0.05F);
-        }
-        overheadFade = Math.max(0.0F, overheadFade - 0.05F);
-        boolean sectorsClear = true;
-        for (float value : sectorFade) sectorsClear &= value <= 0.0F;
-        if (corridorFade <= 0.0F && sectorsClear && overheadFade <= 0.0F) {
-            clear();
-            return;
-        }
-        snapshot = new Snapshot(true, old.cameraBlock(), old.start(), old.end(),
-                old.right(), old.up(), old.taperLength(), old.endRadius(),
-                old.tubeRadius(), old.outerFadeWidth(), corridorFade,
-                sectorFade[0], sectorFade[1], sectorFade[2], sectorFade[3],
-                sectorFade[4], sectorFade[5], sectorFade[6], sectorFade[7],
-                overheadFade);
-    }
-
-    private static float move(float value, float target) {
-        if (value < target) return Math.min(target, value + 0.05F);
-        return Math.max(target, value - 0.05F);
+        clear();
     }
 
     static void clear() {

@@ -70,3 +70,11 @@
   and lower corners one block back, and lower-center two blocks back.
 - Restored terrain collision whenever the requested third-person camera position
   occupies the player's block level or any block below it.
+## 0.4.12
+
+- Replaced the artificial stone boundary with the real exposed block face
+  rendered at zero packed light.
+- Removed all cutaway and boundary opacity timing; activation and restoration
+  are now immediate.
+- Limited bottom-center to one outer layer and both lower corners to two outer
+  layers. Side and upper wedges retain all three layers.
