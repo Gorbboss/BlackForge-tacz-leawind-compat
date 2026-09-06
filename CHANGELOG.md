@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.15-mesh-test
+
+- Diagnostic build based exactly on 0.4.15.
+- Temporarily disables vanilla and Embeddium block suppression and boundary
+  face hooks to test whether asynchronous cached chunk meshes cause the
+  angle-dependent disappearance of terrain.
+- Leaves camera behavior, TaCZ compatibility, aiming, player visibility,
+  shader uniforms, and the 12-block maximum camera distance unchanged.
+
 ## 0.4.10
 
 - Adds a five-tick fade-in and fade-out to each stone boundary face.
@@ -102,9 +111,3 @@
   movement prepares the cutaway before the camera arrives.
 - Keeps the current compact tube, conditional wall wedges, and zero-light
   camera-only boundary unchanged.
-## 0.4.16
-
-- Replaces model-derived zero-light boundary faces with explicit camera-facing
-  black quads, preventing underground X-ray gaps when buried faces are culled.
-- The generated boundary is shared by vanilla and shader rendering and does
-  not alter cutaway geometry, prediction, collision, or world blocks.

@@ -18,7 +18,6 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 
@@ -389,15 +388,6 @@ public final class HiddenBlockManager {
         if (topLast >= 0.0D) lastDistance = Math.max(lastDistance, topLast);
 
         if (cameraInside) {
-            // Midpoint wedge probes can all land in the opened corridor at
-            // steep angles even while the camera is buried in a large solid
-            // mass. In that case, conservatively retain every wedge so the
-            // cutaway can never open into an unbounded x-ray view.
-            if (isDeeplyBuried(mc, cameraPos, right, up,
-                    playerPos.subtract(cameraPos).normalize())) {
-                Arrays.fill(sectors, 1.0F);
-                return new CutawayObstruction(true, true, lastDistance, sectors);
-            }
             Vec3 midpoint = cameraPos.add(playerPos).scale(0.5D);
             for (int horizontal = -1; horizontal <= 1; horizontal++) {
                 for (int vertical = -1; vertical <= 1; vertical++) {
@@ -416,22 +406,6 @@ public final class HiddenBlockManager {
             }
         }
         return new CutawayObstruction(any, cameraInside, lastDistance, sectors);
-    }
-
-    private static boolean isDeeplyBuried(
-            Minecraft mc, Vec3 cameraPos, Vec3 right, Vec3 up, Vec3 axis
-    ) {
-        // Probe all six sides of a small camera-centered box. Requiring five
-        // occupied sides avoids enabling the fallback beside an ordinary wall,
-        // but remains stable when camera rotation crosses block boundaries.
-        int occupied = 0;
-        Vec3[] directions = {right, right.scale(-1.0D), up, up.scale(-1.0D),
-                axis, axis.scale(-1.0D)};
-        for (Vec3 direction : directions) {
-            Vec3 sample = cameraPos.add(direction.scale(0.70D));
-            if (isSolidAt(mc, BlockPos.containing(sample))) occupied++;
-        }
-        return occupied >= 5;
     }
 
     private static boolean isSolidAt(Minecraft mc, BlockPos pos) {

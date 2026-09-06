@@ -14,10 +14,6 @@
     "GameRendererPickMixin",
     "LocalPlayerVisibilityMixin",
     "DecorationEntityCutawayMixin",
-    "EmbeddiumBlockRendererMixin",
-    "EmbeddiumBlockOcclusionMixin",
-    "BlockRenderDispatcherMixin",
-    "BlockFaceBoundaryMixin",
     "OculusUniformsMixin"
   ],
   "injectors": {
