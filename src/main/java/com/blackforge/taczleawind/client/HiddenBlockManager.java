@@ -288,14 +288,44 @@ public final class HiddenBlockManager {
 
         HashSet<BoundaryFace> boundary = new HashSet<>();
         int playerFeetY = (int) Math.floor(mc.player.getY());
+        // Preserve the previously working boundary where the cutaway meets
+        // actual terrain.
+        for (BlockPos cutawayPos : targetMutable) {
+            for (Direction outward : Direction.values()) {
+                BlockPos shellPos = cutawayPos.relative(outward);
+                if (targetMutable.contains(shellPos)) continue;
+                if (outward == Direction.DOWN && shellPos.getY() >= playerFeetY) continue;
+                BlockState shellState = mc.level.getBlockState(shellPos);
+                if (!shellState.isAir()
+                        && shellState.getRenderShape() != RenderShape.INVISIBLE) {
+                    boundary.add(new BoundaryFace(
+                            shellPos.immutable(), outward.getOpposite()));
+                }
+            }
+        }
+
+        // The only air-generated geometry is the outer radial wall of an
+        // activated wedge. It extends along the corridor toward the camera;
+        // axial faces are rejected so this cannot form camera-covering caps.
         for (BlockPos cutawayPos : cutawayVolume) {
+            Vec3 center = Vec3.atCenterOf(cutawayPos);
+            double axial = center.subtract(start).dot(shapeDirection);
+            Vec3 nearest = start.add(shapeDirection.scale(axial));
+            Vec3 radial = center.subtract(nearest);
+            if (radial.lengthSqr() < 1.0E-6D
+                    || obstruction.strength(radial, right, up) <= 0.0F) continue;
+            Vec3 radialDirection = radial.normalize();
             for (Direction outward : Direction.values()) {
                 BlockPos shellPos = cutawayPos.relative(outward);
                 if (cutawayVolume.contains(shellPos)) continue;
-                // Never put the lower black-concrete face at or above the
-                // player's feet. It is allowed only beneath the player.
+                if (!mc.level.getBlockState(shellPos).isAir()) continue;
                 if (outward == Direction.DOWN && shellPos.getY() >= playerFeetY) continue;
-                boundary.add(new BoundaryFace(shellPos.immutable(), outward.getOpposite()));
+                Vec3 outwardVector = new Vec3(
+                        outward.getStepX(), outward.getStepY(), outward.getStepZ());
+                if (Math.abs(outwardVector.dot(shapeDirection)) > 0.55D) continue;
+                if (outwardVector.dot(radialDirection) <= 0.25D) continue;
+                boundary.add(new BoundaryFace(
+                        shellPos.immutable(), outward.getOpposite()));
             }
         }
         blackBoundaryFaces = Set.copyOf(boundary);

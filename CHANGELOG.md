@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.7
+
+- Removes the v0.4.6 closed mathematical boundary.
+- Restores terrain-backed boundary faces from v0.4.5.
+- Allows only activated outer wedge walls to extend through air.
+- Rejects air-generated end caps and camera-covering faces.
+- Remains compatible with BlackForge Unbound 1.8.
+
 ## 0.4.6
 
 - Reverts transition layers from black concrete to original textured transparency.
