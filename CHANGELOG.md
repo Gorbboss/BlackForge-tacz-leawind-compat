@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2
+
+- Replaces timed fades with immediate distance-based transparency.
+- Adds directional 3x3 obstruction detection for four independent sides.
+- Adds the overhead 2x2x2 camera-clearance volume.
+- Updates the shader contract for BlackForge Unbound 1.4.
+
 ## 0.4.1
 
 - Makes the exact camera block disappear immediately.

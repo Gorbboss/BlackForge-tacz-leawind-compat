@@ -1,14 +1,15 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
-## BlackForge v0.4.1 staged cutaway update
+## BlackForge v0.4.2 directional spatial cutaway
 
-- The exact block occupied by the camera becomes invisible immediately.
-- The direct up, down, left, and right band fades in 0.25 seconds.
-- Corners and the next cardinal positions fade in 0.50 seconds.
-- The following ring fades in 0.75 seconds.
-- The remaining cutaway fades in 1.00 second.
-- Shader mode publishes `bfCutawayCameraBlock` and a four-component
-  `bfCutawayFade`; use BlackForge Unbound 1.3 or newer.
+- Replaces all time-based fades with transparency based only on distance from
+  the central 3x3 corridor.
+- Probes a 3x3 ray grid. Any hit opens the central corridor; surrounding
+  transparency expands only on the obstructed right, left, up, or down side.
+- Corner probe hits activate both adjoining sides.
+- When the camera is at least one block above the player, an independent 2x2x2
+  camera-clearance box becomes fully transparent.
+- Use BlackForge Unbound 1.4 or newer for the matching shader mask.
 
 ## BlackForge v0.4.0 (build #55 baseline)
 
@@ -34,7 +35,8 @@
 - `bfCutawayStart`, `bfCutawayEnd` - world-space corridor endpoints.
 - `bfCutawayRight`, `bfCutawayUp` - camera-plane basis vectors.
 - `bfCutawayCameraBlock` - integer world position of the camera's occupied block.
-- `bfCutawayFade` - 0.25, 0.50, 0.75, and 1.00 second fade-band progress.
+- `bfCutawaySides` - right, left, up, and down directional activation.
+- `bfCutawayFlags` - corridor and overhead-clearance activation.
 - `bfCutawayShape` - taper length, end radius, tube radius, and outer fade width.
 
 Photon must consume these only from its main-camera terrain programs. Shadow
