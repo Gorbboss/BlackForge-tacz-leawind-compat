@@ -23,7 +23,9 @@ import java.util.Set;
 
 public final class HiddenBlockManager {
     private static final double CAMERA_APEX_BACK_OFFSET = 1.0D;
-    private static final double PLAYER_END_BACK_OFFSET = 1.0D;
+    private static final double NEAR_PLAYER_END_OFFSET = 0.25D;
+    private static final double SIDE_END_OFFSET = 1.0D;
+    private static final double BOTTOM_CENTER_END_OFFSET = 2.0D;
     // Half a block in radius gives a one-block-wide opening at each end.
     private static final double END_RADIUS = 0.5D;
     private static final double TUBE_RADIUS = 1.5D;
@@ -193,14 +195,12 @@ public final class HiddenBlockManager {
             return;
         }
 
-        // Start one block behind the camera and stop one block behind the
-        // character, on the camera-facing side.
+        // Start one block behind the camera. The player-side end is selected
+        // independently for the center and each of the eight screen sectors.
         Vec3 start = cameraPos.subtract(axis.scale(CAMERA_APEX_BACK_OFFSET));
         double normalEndDistance = Math.max(1.0D,
-                cameraDistance - PLAYER_END_BACK_OFFSET);
-        double rawEndDistance = obstruction.any()
-                ? Math.min(normalEndDistance, obstruction.lastDistance() + 0.85D)
-                : normalEndDistance;
+                cameraDistance - NEAR_PLAYER_END_OFFSET);
+        double rawEndDistance = normalEndDistance;
         double cutawayEndDistance = rawEndDistance;
         if (retainedEndDistance > rawEndDistance
                 && retainedEndDistance <= rawEndDistance * RELEASE_OVERLAP) {
@@ -259,8 +259,27 @@ public final class HiddenBlockManager {
                     Vec3 fromStart = center.subtract(start);
                     double axialDistance = fromStart.dot(shapeDirection);
 
-                    // Do not hide anything beyond either end cap.
-                    if (axialDistance < 0.0D || axialDistance > shapeLength) {
+                    // Each part of the 3x3 screen-space opening stops at its
+                    // own distance from the player: top and center are near,
+                    // left/right and bottom corners stop one block back, and
+                    // bottom-center stops two blocks back.
+                    Vec3 nearestOnAxis = start.add(
+                            shapeDirection.scale(Math.max(0.0D,
+                                    Math.min(axialDistance, shapeLength)))
+                    );
+                    Vec3 radialVector = center.subtract(nearestOnAxis);
+                    double horizontal = radialVector.dot(right);
+                    double vertical = radialVector.dot(up);
+                    double playerBackOffset = endpointOffset(
+                            horizontal, vertical,
+                            Math.sqrt(radialVector.lengthSqr()), blockAllowance
+                    );
+                    double sectorLength = Math.max(1.0D,
+                            CAMERA_APEX_BACK_OFFSET + cameraDistance
+                                    - playerBackOffset);
+
+                    // Do not hide anything beyond either end cap for this ray.
+                    if (axialDistance < 0.0D || axialDistance > sectorLength) {
                         continue;
                     }
 
@@ -275,8 +294,8 @@ public final class HiddenBlockManager {
 
                     double radius = radiusAt(
                             axialDistance,
-                            shapeLength,
-                            taperLength
+                            sectorLength,
+                            Math.min(MAX_TAPER_LENGTH, sectorLength * 0.25D)
                     );
 
                     Vec3 nearest = start.add(
@@ -320,19 +339,10 @@ public final class HiddenBlockManager {
                     nextReleaseRadii.put(immutable, retainedPrevious
                             ? previousRelease
                             : releaseBoundary(selectedLayer, innerEdge, fadeEdge));
-                    if (selectedLayer == 0) {
-                        // Fully invisible center.
-                        targetMutable.add(immutable);
-                        targetTranslucent.put(immutable, 0.0F);
-                    } else {
-                        // Smoothly blend from zero visibility at the cutaway
-                        // edge to full visibility across three outer rings.
-                        double progress = Math.min(1.0D, Math.max(0.0D,
-                                (distance - innerEdge) / OUTER_FADE_WIDTH));
-                        double smooth = progress * progress * (3.0D - 2.0D * progress);
-                        targetMutable.add(immutable);
-                        targetTranslucent.put(immutable, (float) smooth);
-                    }
+                    // Testing mode: the old center plus all three transition
+                    // rings are one fully invisible cutaway footprint.
+                    targetMutable.add(immutable);
+                    targetTranslucent.put(immutable, 0.0F);
                 }
             }
         }
@@ -417,6 +427,28 @@ public final class HiddenBlockManager {
         if (distance <= innerEdge + layerWidth) return 1;
         if (distance <= innerEdge + layerWidth * 2.0D) return 2;
         return 3;
+    }
+
+    private static double endpointOffset(
+            double horizontal, double vertical,
+            double radialDistance, double blockAllowance
+    ) {
+        // The center camera ray reaches right up to the player.
+        if (radialDistance <= END_RADIUS + blockAllowance) {
+            return NEAR_PLAYER_END_OFFSET;
+        }
+
+        double angle = Math.atan2(vertical, horizontal);
+        int sector = (int) Math.floor(angle / (Math.PI * 0.25D) + 0.5D);
+        sector = Math.floorMod(sector, 8);
+        return switch (sector) {
+            // up-right, up, up-left
+            case 1, 2, 3 -> NEAR_PLAYER_END_OFFSET;
+            // bottom-center
+            case 6 -> BOTTOM_CENTER_END_OFFSET;
+            // right, left, bottom-left, bottom-right
+            default -> SIDE_END_OFFSET;
+        };
     }
 
     private static double releaseBoundary(

@@ -63,3 +63,10 @@
 - Added forward-only crosshair target filter.
 - Added camera collision bypass.
 - Added client-side camera obstruction hiding and adjacent boundary-face forcing.
+## 0.4.11
+
+- Changed the complete former three-ring transition footprint to fully invisible.
+- Added separate player-side endpoints: top and center near the player, left/right
+  and lower corners one block back, and lower-center two blocks back.
+- Restored terrain collision whenever the requested third-person camera position
+  occupies the player's block level or any block below it.
