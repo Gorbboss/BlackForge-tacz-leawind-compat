@@ -35,11 +35,13 @@ public final class HiddenBlockManager {
      */
     private static final double OUTER_FADE_WIDTH = 3.0D;
     private static final double TRIGGER_RAY_OFFSET = 0.85D;
+    private static final float VISIBILITY_STEP = 1.0F / 20.0F;
     private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
             ThreadLocal.withInitial(() -> false);
 
     private static volatile Set<BlockPos> hidden = Set.of();
     private static volatile Map<BlockPos, Float> translucent = Map.of();
+    private static volatile Set<BoundaryFace> blackBoundaryFaces = Set.of();
     private static volatile ConeVolume cone = ConeVolume.INACTIVE;
 
     public static boolean isHidden(BlockPos pos) {
@@ -52,6 +54,10 @@ public final class HiddenBlockManager {
 
     public static Map<BlockPos, Float> translucentSnapshot() {
         return translucent;
+    }
+
+    public static Set<BoundaryFace> blackBoundarySnapshot() {
+        return blackBoundaryFaces;
     }
 
     public static void beginOverlayRender() {
@@ -85,11 +91,32 @@ public final class HiddenBlockManager {
 
     private static void clearHiddenGeometry(Minecraft mc) {
         translucent = Map.of();
+        blackBoundaryFaces = Set.of();
         Set<BlockPos> old = hidden;
         if (old.isEmpty()) return;
 
         hidden = Set.of();
         markDirty(mc, old);
+    }
+
+    private static void closeSmoothly(Minecraft mc) {
+        if (hidden.isEmpty()) return;
+        HashSet<BlockPos> remaining = new HashSet<>();
+        HashMap<BlockPos, Float> opacities = new HashMap<>();
+        for (BlockPos pos : hidden) {
+            float opacity = Math.min(1.0F,
+                    translucent.getOrDefault(pos, 0.0F) + VISIBILITY_STEP);
+            if (opacity < 0.999F) {
+                remaining.add(pos);
+                opacities.put(pos, opacity);
+            }
+        }
+
+        publish(mc, remaining, opacities);
+        if (remaining.isEmpty()) {
+            cone = ConeVolume.INACTIVE;
+            blackBoundaryFaces = Set.of();
+        }
     }
 
     public static void update() {
@@ -111,7 +138,8 @@ public final class HiddenBlockManager {
         Vec3 cameraToPlayer = playerPos.subtract(cameraPos);
         double cameraDistance = cameraToPlayer.length();
         if (cameraDistance < 2.05D) {
-            clearImmediately(mc);
+            ShaderCutawayState.deactivateSmoothly();
+            closeSmoothly(mc);
             return;
         }
 
@@ -125,7 +153,9 @@ public final class HiddenBlockManager {
          */
         DirectionalObstruction obstruction = findObstruction(mc, cameraPos, playerPos, right, up);
         if (!obstruction.any() && !overheadClearance) {
-            clearImmediately(mc);
+            ShaderCutawayState.deactivateSmoothly();
+            if (ShaderPackDetector.isShaderPackActive()) clearHiddenGeometry(mc);
+            else closeSmoothly(mc);
             return;
         }
 
@@ -236,8 +266,55 @@ public final class HiddenBlockManager {
             }
         }
 
-        Set<BlockPos> next = Set.copyOf(targetMutable);
-        Map<BlockPos, Float> nextFade = Map.copyOf(targetTranslucent);
+        HashSet<BoundaryFace> boundary = new HashSet<>();
+        for (BlockPos cutawayPos : targetMutable) {
+            for (Direction outward : Direction.values()) {
+                BlockPos shellPos = cutawayPos.relative(outward);
+                if (targetMutable.contains(shellPos)) continue;
+                BlockState shellState = mc.level.getBlockState(shellPos);
+                if (!shellState.isAir()
+                        && shellState.getRenderShape() != RenderShape.INVISIBLE) {
+                    boundary.add(new BoundaryFace(shellPos.immutable(), outward.getOpposite()));
+                }
+            }
+        }
+        blackBoundaryFaces = Set.copyOf(boundary);
+
+        HashSet<BlockPos> animated = new HashSet<>();
+        HashMap<BlockPos, Float> animatedOpacity = new HashMap<>();
+        for (BlockPos pos : targetMutable) {
+            float target = targetTranslucent.getOrDefault(pos, 0.0F);
+            float previous = hidden.contains(pos)
+                    ? translucent.getOrDefault(pos, 0.0F) : 1.0F;
+            // The center corridor and camera-clearance box open immediately.
+            float opacity = target <= 0.001F ? 0.0F
+                    : moveToward(previous, target, VISIBILITY_STEP);
+            animated.add(pos);
+            animatedOpacity.put(pos, opacity);
+        }
+        // Everything leaving the moving cutaway takes one second to return.
+        for (BlockPos pos : hidden) {
+            if (targetMutable.contains(pos)) continue;
+            float opacity = Math.min(1.0F,
+                    translucent.getOrDefault(pos, 0.0F) + VISIBILITY_STEP);
+            if (opacity < 0.999F) {
+                animated.add(pos);
+                animatedOpacity.put(pos, opacity);
+            }
+        }
+        publish(mc, animated, animatedOpacity);
+    }
+
+    private static float moveToward(float value, float target, float amount) {
+        if (value < target) return Math.min(target, value + amount);
+        return Math.max(target, value - amount);
+    }
+
+    private static void publish(
+            Minecraft mc, Set<BlockPos> positions, Map<BlockPos, Float> opacities
+    ) {
+        Set<BlockPos> next = Set.copyOf(positions);
+        Map<BlockPos, Float> nextFade = Map.copyOf(opacities);
         Set<BlockPos> old = hidden;
 
         if (!next.equals(old)) {
@@ -308,6 +385,8 @@ public final class HiddenBlockManager {
             return vertical >= 0.0D ? up : down;
         }
     }
+
+    public record BoundaryFace(BlockPos pos, Direction face) {}
 
     private static void markDirty(Minecraft mc, Set<BlockPos> positions) {
         if (mc.levelRenderer == null) return;

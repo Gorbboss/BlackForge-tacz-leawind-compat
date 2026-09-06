@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3
+
+- Adds proportional one-second smoothing to outer cutaway visibility.
+- Adds a one-second restoration transition for departing blocks.
+- Adds a camera-only black enclosure around the cutaway and its end caps.
+- Updates the matching shader contract for BlackForge Unbound 1.5.
+
 ## 0.4.2
 
 - Replaces timed fades with immediate distance-based transparency.

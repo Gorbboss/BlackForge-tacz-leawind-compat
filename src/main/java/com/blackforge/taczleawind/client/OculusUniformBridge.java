@@ -35,17 +35,15 @@ public final class OculusUniformBridge {
             addVec4(holder, perFrame, "bfCutawaySides", () -> {
                 ShaderCutawayState.Snapshot state = ShaderCutawayState.snapshot();
                 return new Vector4f(
-                        state.rightActive() ? 1.0F : 0.0F,
-                        state.leftActive() ? 1.0F : 0.0F,
-                        state.upActive() ? 1.0F : 0.0F,
-                        state.downActive() ? 1.0F : 0.0F
+                        state.rightFade(), state.leftFade(),
+                        state.upFade(), state.downFade()
                 );
             });
             addVec4(holder, perFrame, "bfCutawayFlags", () -> {
                 ShaderCutawayState.Snapshot state = ShaderCutawayState.snapshot();
                 return new Vector4f(
-                        state.corridorActive() ? 1.0F : 0.0F,
-                        state.overheadClearance() ? 1.0F : 0.0F,
+                        state.corridorFade(),
+                        state.overheadFade(),
                         0.0F, 0.0F
                 );
             });

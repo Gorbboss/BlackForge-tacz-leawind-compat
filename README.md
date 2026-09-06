@@ -1,5 +1,17 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
+## BlackForge v0.4.3 smoothed cutaway and black boundary
+
+- Keeps the center corridor and active camera-clearance box instant.
+- Moves each outer block toward its distance-based target at five percentage
+  points per tick: a complete transition takes one second and partial changes
+  take proportionally less time.
+- Restores every departing cutaway block over one second from its current
+  visibility, including blocks that were fully invisible.
+- Draws a camera-only black boundary face around the cutaway and closes its
+  ends to prevent unintended views through terrain.
+- Use BlackForge Unbound 1.5 for the matching shader implementation.
+
 ## BlackForge v0.4.2 directional spatial cutaway
 
 - Replaces all time-based fades with transparency based only on distance from

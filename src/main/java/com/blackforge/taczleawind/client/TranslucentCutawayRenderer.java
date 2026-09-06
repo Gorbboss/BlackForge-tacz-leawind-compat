@@ -6,14 +6,20 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 
 import java.util.Map;
+import java.util.Set;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
 
 /** Re-renders the cutaway fade while Oculus still owns the world buffers. */
 public final class TranslucentCutawayRenderer {
@@ -30,7 +36,9 @@ public final class TranslucentCutawayRenderer {
                 != RenderLevelStageEvent.Stage.AFTER_CUTOUT_MIPPED_BLOCKS_BLOCKS) return;
 
         Map<BlockPos, Float> blocks = HiddenBlockManager.translucentSnapshot();
-        if (blocks.isEmpty()) return;
+        Set<HiddenBlockManager.BoundaryFace> boundary =
+                HiddenBlockManager.blackBoundarySnapshot();
+        if (blocks.isEmpty() && boundary.isEmpty()) return;
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
@@ -78,7 +86,47 @@ public final class TranslucentCutawayRenderer {
             HiddenBlockManager.endOverlayRender();
         }
 
+
+        // Draw only the camera-facing cavity boundary, never replacement world
+        // blocks. This creates the intentional black anti-X-ray shell.
+        poseStack.pushPose();
+        poseStack.translate(-camera.getPosition().x, -camera.getPosition().y,
+                -camera.getPosition().z);
+        PoseStack.Pose pose = poseStack.last();
+        for (HiddenBlockManager.BoundaryFace face : boundary) {
+            emitBlackFace(translucentBuffer, pose, face.pos(), face.face());
+        }
+        poseStack.popPose();
+
         buffers.endBatch(shaderAwareTranslucent);
+    }
+
+    private static void emitBlackFace(
+            VertexConsumer consumer, PoseStack.Pose pose,
+            BlockPos pos, Direction face
+    ) {
+        float x = pos.getX(), y = pos.getY(), z = pos.getZ();
+        float e = 0.001F;
+        float[][] vertices = switch (face) {
+            case DOWN -> new float[][]{{x,y-e,z},{x+1,y-e,z},{x+1,y-e,z+1},{x,y-e,z+1}};
+            case UP -> new float[][]{{x,y+1+e,z},{x,y+1+e,z+1},{x+1,y+1+e,z+1},{x+1,y+1+e,z}};
+            case NORTH -> new float[][]{{x,y,z-e},{x,y+1,z-e},{x+1,y+1,z-e},{x+1,y,z-e}};
+            case SOUTH -> new float[][]{{x,y,z+1+e},{x+1,y,z+1+e},{x+1,y+1,z+1+e},{x,y+1,z+1+e}};
+            case WEST -> new float[][]{{x-e,y,z},{x-e,y,z+1},{x-e,y+1,z+1},{x-e,y+1,z}};
+            case EAST -> new float[][]{{x+1+e,y,z},{x+1+e,y+1,z},{x+1+e,y+1,z+1},{x+1+e,y,z+1}};
+        };
+        Matrix4f matrix = pose.pose();
+        Matrix3f normal = pose.normal();
+        float nx = face.getStepX(), ny = face.getStepY(), nz = face.getStepZ();
+        for (int i = 0; i < 4; i++) {
+            consumer.vertex(matrix, vertices[i][0], vertices[i][1], vertices[i][2])
+                    .color(0, 0, 0, 255)
+                    .uv((i == 1 || i == 2) ? 1.0F : 0.0F, i >= 2 ? 1.0F : 0.0F)
+                    .overlayCoords(OverlayTexture.NO_OVERLAY)
+                    .uv2(LightTexture.FULL_BRIGHT)
+                    .normal(normal, nx, ny, nz)
+                    .endVertex();
+        }
     }
 
     private static final class AlphaVertexConsumer implements VertexConsumer {
