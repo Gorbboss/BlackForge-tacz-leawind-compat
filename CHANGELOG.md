@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.10
+
+- Adds a five-tick fade-in and fade-out to each stone boundary face.
+- Starts reversal from the face's current opacity to prevent visual jumps.
+- Remains compatible with BlackForge Unbound 1.7.
+
+## 0.4.9
+
+- Adds 15% per-layer release hysteresis to reduce edge flicker.
+- Adds 15% release retention to the last-obstruction endpoint.
+- Replaces the outer black-concrete lining texture with vanilla stone.
+- Remains compatible with BlackForge Unbound 1.7.
+
 ## 0.4.8
 
 - Rebuilt directly from the v0.4.5 source archive.

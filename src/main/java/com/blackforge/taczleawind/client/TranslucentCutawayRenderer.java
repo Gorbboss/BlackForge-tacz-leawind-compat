@@ -19,7 +19,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 
 import java.util.Map;
-import java.util.Set;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 
@@ -38,8 +37,8 @@ public final class TranslucentCutawayRenderer {
                 != RenderLevelStageEvent.Stage.AFTER_CUTOUT_MIPPED_BLOCKS_BLOCKS) return;
 
         Map<BlockPos, Float> blocks = HiddenBlockManager.translucentSnapshot();
-        Set<HiddenBlockManager.BoundaryFace> boundary =
-                HiddenBlockManager.blackBoundarySnapshot();
+        Map<HiddenBlockManager.BoundaryFace, Float> boundary =
+                HiddenBlockManager.boundarySnapshot();
         if (blocks.isEmpty() && boundary.isEmpty()) return;
 
         Minecraft mc = Minecraft.getInstance();
@@ -52,8 +51,8 @@ public final class TranslucentCutawayRenderer {
                 InventoryMenu.BLOCK_ATLAS
         );
         VertexConsumer translucentBuffer = buffers.getBuffer(shaderAwareTranslucent);
-        TextureAtlasSprite blackConcrete = mc.getTextureAtlas(InventoryMenu.BLOCK_ATLAS)
-                .apply(new ResourceLocation("minecraft", "block/black_concrete"));
+        TextureAtlasSprite boundaryStone = mc.getTextureAtlas(InventoryMenu.BLOCK_ATLAS)
+                .apply(new ResourceLocation("minecraft", "block/stone"));
         BlockRenderDispatcher dispatcher = mc.getBlockRenderer();
         RandomSource random = RandomSource.create();
 
@@ -61,7 +60,7 @@ public final class TranslucentCutawayRenderer {
         try {
             for (Map.Entry<BlockPos, Float> entry : blocks.entrySet()) {
                 // Transitional blocks keep their original textures. Black
-                // concrete remains exclusive to the outer boundary lining.
+                // stone remains exclusive to the outer boundary lining.
                 if (entry.getValue() <= 0.001F) continue;
                 BlockPos pos = entry.getKey();
                 BlockState state = mc.level.getBlockState(pos);
@@ -84,22 +83,24 @@ public final class TranslucentCutawayRenderer {
 
 
         // Draw only the camera-facing cavity boundary using Minecraft's real
-        // black-concrete atlas texture. No block is placed or replaced.
+        // stone atlas texture. No block is placed or replaced.
         poseStack.pushPose();
         poseStack.translate(-camera.getPosition().x, -camera.getPosition().y,
                 -camera.getPosition().z);
         PoseStack.Pose pose = poseStack.last();
-        for (HiddenBlockManager.BoundaryFace face : boundary) {
+        for (Map.Entry<HiddenBlockManager.BoundaryFace, Float> entry
+                : boundary.entrySet()) {
+            HiddenBlockManager.BoundaryFace face = entry.getKey();
             int light = LevelRenderer.getLightColor(mc.level, face.pos());
-            emitBlackConcreteFace(translucentBuffer, pose, face.pos(),
-                    face.face(), blackConcrete, light, 1.0F);
+            emitBoundaryStoneFace(translucentBuffer, pose, face.pos(),
+                    face.face(), boundaryStone, light, entry.getValue());
         }
         poseStack.popPose();
 
         buffers.endBatch(shaderAwareTranslucent);
     }
 
-    private static void emitBlackConcreteFace(
+    private static void emitBoundaryStoneFace(
             VertexConsumer consumer, PoseStack.Pose pose,
             BlockPos pos, Direction face, TextureAtlasSprite sprite,
             int light, float opacity

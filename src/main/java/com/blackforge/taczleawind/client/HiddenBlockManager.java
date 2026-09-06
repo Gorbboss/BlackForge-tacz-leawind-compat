@@ -36,12 +36,17 @@ public final class HiddenBlockManager {
     private static final double OUTER_FADE_WIDTH = 3.0D;
     private static final double TRIGGER_RAY_OFFSET = 0.85D;
     private static final float VISIBILITY_STEP = 1.0F / 20.0F;
+    private static final float BOUNDARY_OPACITY_STEP = 1.0F / 5.0F;
+    private static final double RELEASE_OVERLAP = 1.15D;
     private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
             ThreadLocal.withInitial(() -> false);
 
     private static volatile Set<BlockPos> hidden = Set.of();
     private static volatile Map<BlockPos, Float> translucent = Map.of();
-    private static volatile Set<BoundaryFace> blackBoundaryFaces = Set.of();
+    private static volatile Map<BoundaryFace, Float> boundaryFaces = Map.of();
+    private static volatile Map<BlockPos, Integer> retainedLayers = Map.of();
+    private static volatile Map<BlockPos, Double> retainedReleaseRadii = Map.of();
+    private static double retainedEndDistance = -1.0D;
     private static volatile ConeVolume cone = ConeVolume.INACTIVE;
 
     public static boolean isHidden(BlockPos pos) {
@@ -56,8 +61,8 @@ public final class HiddenBlockManager {
         return translucent;
     }
 
-    public static Set<BoundaryFace> blackBoundarySnapshot() {
-        return blackBoundaryFaces;
+    public static Map<BoundaryFace, Float> boundarySnapshot() {
+        return boundaryFaces;
     }
 
     public static void beginOverlayRender() {
@@ -86,7 +91,10 @@ public final class HiddenBlockManager {
     private static void clearImmediately(Minecraft mc) {
         ShaderCutawayState.clear();
         cone = ConeVolume.INACTIVE;
-        blackBoundaryFaces = Set.of();
+        boundaryFaces = Map.of();
+        retainedLayers = Map.of();
+        retainedReleaseRadii = Map.of();
+        retainedEndDistance = -1.0D;
         clearHiddenBlocks(mc);
     }
 
@@ -100,6 +108,7 @@ public final class HiddenBlockManager {
     }
 
     private static void closeSmoothly(Minecraft mc) {
+        updateBoundary(Set.of());
         if (hidden.isEmpty()) return;
         HashSet<BlockPos> remaining = new HashSet<>();
         HashMap<BlockPos, Float> opacities = new HashMap<>();
@@ -115,11 +124,14 @@ public final class HiddenBlockManager {
         publish(mc, remaining, opacities);
         if (remaining.isEmpty()) {
             cone = ConeVolume.INACTIVE;
-            blackBoundaryFaces = Set.of();
+            retainedLayers = Map.of();
+            retainedReleaseRadii = Map.of();
+            retainedEndDistance = -1.0D;
         }
     }
 
     private static void closeShaderOverlay(Minecraft mc) {
+        updateBoundary(Set.of());
         HashMap<BlockPos, Float> remaining = new HashMap<>();
         for (Map.Entry<BlockPos, Float> entry : translucent.entrySet()) {
             float opacity = Math.min(1.0F, entry.getValue() + VISIBILITY_STEP);
@@ -127,7 +139,9 @@ public final class HiddenBlockManager {
         }
         translucent = Map.copyOf(remaining);
         if (remaining.isEmpty() && !ShaderCutawayState.snapshot().active()) {
-            blackBoundaryFaces = Set.of();
+            retainedLayers = Map.of();
+            retainedReleaseRadii = Map.of();
+            retainedEndDistance = -1.0D;
         }
         if (!hidden.isEmpty()) {
             Set<BlockPos> old = hidden;
@@ -184,9 +198,15 @@ public final class HiddenBlockManager {
         Vec3 start = cameraPos.subtract(axis.scale(CAMERA_APEX_BACK_OFFSET));
         double normalEndDistance = Math.max(1.0D,
                 cameraDistance - PLAYER_END_BACK_OFFSET);
-        double cutawayEndDistance = obstruction.any()
+        double rawEndDistance = obstruction.any()
                 ? Math.min(normalEndDistance, obstruction.lastDistance() + 0.85D)
                 : normalEndDistance;
+        double cutawayEndDistance = rawEndDistance;
+        if (retainedEndDistance > rawEndDistance
+                && retainedEndDistance <= rawEndDistance * RELEASE_OVERLAP) {
+            cutawayEndDistance = Math.min(normalEndDistance, retainedEndDistance);
+        }
+        retainedEndDistance = cutawayEndDistance;
         Vec3 end = cameraPos.add(axis.scale(cutawayEndDistance));
         Vec3 shapeAxis = end.subtract(start);
         double shapeLength = shapeAxis.length();
@@ -210,6 +230,7 @@ public final class HiddenBlockManager {
         double searchRadius = TUBE_RADIUS
                 + OUTER_FADE_WIDTH
                 + blockAllowance;
+        searchRadius *= RELEASE_OVERLAP;
 
         int minX = (int) Math.floor(Math.min(start.x, end.x) - searchRadius);
         int minY = (int) Math.floor(Math.min(start.y, end.y) - searchRadius);
@@ -220,6 +241,8 @@ public final class HiddenBlockManager {
 
         HashSet<BlockPos> targetMutable = new HashSet<>();
         HashMap<BlockPos, Float> targetTranslucent = new HashMap<>();
+        HashMap<BlockPos, Integer> nextLayers = new HashMap<>();
+        HashMap<BlockPos, Double> nextReleaseRadii = new HashMap<>();
 
         for (int x = minX; x <= maxX; x++) {
             for (int y = minY; y <= maxY; y++) {
@@ -269,15 +292,43 @@ public final class HiddenBlockManager {
                     double fadeEdge = innerEdge + OUTER_FADE_WIDTH;
 
                     BlockPos immutable = pos.immutable();
-                    if ((obstruction.any() && distance <= innerEdge) || cameraClearance) {
+                    int normalLayer = layerAt(distance, innerEdge, fadeEdge);
+                    if (!obstruction.any() && !cameraClearance) normalLayer = -1;
+                    boolean sectorEnabled = obstruction.enables(
+                            center.subtract(nearest), right, up);
+                    if (normalLayer > 0 && !sectorEnabled) normalLayer = -1;
+                    Integer previousLayer = retainedLayers.get(immutable);
+                    int selectedLayer = normalLayer;
+                    double previousRelease = retainedReleaseRadii.getOrDefault(
+                            immutable,
+                            previousLayer == null ? -1.0D : releaseBoundary(
+                                    previousLayer, innerEdge, fadeEdge));
+                    boolean retainedPrevious = false;
+                    if (previousLayer != null
+                            && (normalLayer < 0 || normalLayer > previousLayer)
+                            && distance <= previousRelease) {
+                        selectedLayer = previousLayer;
+                        retainedPrevious = true;
+                    }
+                    if (cameraClearance) {
+                        selectedLayer = 0;
+                        retainedPrevious = false;
+                    }
+                    if (selectedLayer < 0) continue;
+
+                    nextLayers.put(immutable, selectedLayer);
+                    nextReleaseRadii.put(immutable, retainedPrevious
+                            ? previousRelease
+                            : releaseBoundary(selectedLayer, innerEdge, fadeEdge));
+                    if (selectedLayer == 0) {
                         // Fully invisible center.
                         targetMutable.add(immutable);
                         targetTranslucent.put(immutable, 0.0F);
-                    } else if (obstruction.any() && distance <= fadeEdge
-                            && obstruction.enables(center.subtract(nearest), right, up)) {
+                    } else {
                         // Smoothly blend from zero visibility at the cutaway
                         // edge to full visibility across three outer rings.
-                        double progress = (distance - innerEdge) / OUTER_FADE_WIDTH;
+                        double progress = Math.min(1.0D, Math.max(0.0D,
+                                (distance - innerEdge) / OUTER_FADE_WIDTH));
                         double smooth = progress * progress * (3.0D - 2.0D * progress);
                         targetMutable.add(immutable);
                         targetTranslucent.put(immutable, (float) smooth);
@@ -285,6 +336,8 @@ public final class HiddenBlockManager {
                 }
             }
         }
+        retainedLayers = Map.copyOf(nextLayers);
+        retainedReleaseRadii = Map.copyOf(nextReleaseRadii);
 
         HashSet<BoundaryFace> boundary = new HashSet<>();
         for (BlockPos cutawayPos : targetMutable) {
@@ -298,7 +351,7 @@ public final class HiddenBlockManager {
                 }
             }
         }
-        blackBoundaryFaces = Set.copyOf(boundary);
+        updateBoundary(boundary);
 
         HashSet<BlockPos> animated = new HashSet<>();
         HashMap<BlockPos, Float> animatedOpacity = new HashMap<>();
@@ -337,6 +390,46 @@ public final class HiddenBlockManager {
     private static float moveToward(float value, float target, float amount) {
         if (value < target) return Math.min(target, value + amount);
         return Math.max(target, value - amount);
+    }
+
+    private static void updateBoundary(Set<BoundaryFace> target) {
+        HashMap<BoundaryFace, Float> next = new HashMap<>();
+        for (BoundaryFace face : target) {
+            float opacity = Math.min(1.0F,
+                    boundaryFaces.getOrDefault(face, 0.0F) + BOUNDARY_OPACITY_STEP);
+            next.put(face, opacity);
+        }
+        for (Map.Entry<BoundaryFace, Float> entry : boundaryFaces.entrySet()) {
+            if (target.contains(entry.getKey())) continue;
+            float opacity = Math.max(0.0F,
+                    entry.getValue() - BOUNDARY_OPACITY_STEP);
+            if (opacity > 0.001F) next.put(entry.getKey(), opacity);
+        }
+        boundaryFaces = Map.copyOf(next);
+    }
+
+    private static int layerAt(
+            double distance, double innerEdge, double fadeEdge
+    ) {
+        if (distance <= innerEdge) return 0;
+        if (distance > fadeEdge) return -1;
+        double layerWidth = (fadeEdge - innerEdge) / 3.0D;
+        if (distance <= innerEdge + layerWidth) return 1;
+        if (distance <= innerEdge + layerWidth * 2.0D) return 2;
+        return 3;
+    }
+
+    private static double releaseBoundary(
+            int layer, double innerEdge, double fadeEdge
+    ) {
+        double normalBoundary;
+        if (layer <= 0) {
+            normalBoundary = innerEdge;
+        } else {
+            double layerWidth = (fadeEdge - innerEdge) / 3.0D;
+            normalBoundary = innerEdge + layerWidth * Math.min(layer, 3);
+        }
+        return normalBoundary * RELEASE_OVERLAP;
     }
 
     private static void publish(

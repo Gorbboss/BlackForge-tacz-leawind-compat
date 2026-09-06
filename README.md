@@ -1,5 +1,26 @@
 # BlackForge TaCZ + Leawind Camera Compat v0.1.0
 
+## BlackForge v0.4.10 stone-boundary fade
+
+- Fades each newly created stone boundary face from 0% to 100% opacity over
+  five client ticks (0.25 seconds).
+- Fades a departing boundary face from its current opacity to 0% over the same
+  five-tick interval.
+- Keeps the 15% per-layer release hysteresis and every v0.4.9 behavior.
+- Continues to use BlackForge Unbound 1.7; no shader change is required.
+
+## BlackForge v0.4.9 overlap smoothing test
+
+- Adds 15% release-only spatial hysteresis independently to the center and
+  each of the three transition layers.
+- Blocks still enter at normal boundaries, but an assigned block must leave
+  its layer's 115% boundary before being released.
+- Adds the same 15% retention rule to a shortening last-obstruction endpoint.
+- Keeps inward movement immediate and retains the existing opacity smoothing.
+- Changes the outer boundary lining from black concrete to vanilla stone.
+- Continues to use BlackForge Unbound 1.7; the shader uniform contract is
+  unchanged.
+
 ## BlackForge v0.4.8 corrected v0.4.5 baseline
 
 - Restores the complete v0.4.5 wedge, endpoint, smoothing, and boundary logic.
