@@ -102,3 +102,9 @@
   movement prepares the cutaway before the camera arrives.
 - Keeps the current compact tube, conditional wall wedges, and zero-light
   camera-only boundary unchanged.
+## 0.4.16
+
+- Replaces model-derived zero-light boundary faces with explicit camera-facing
+  black quads, preventing underground X-ray gaps when buried faces are culled.
+- The generated boundary is shared by vanilla and shader rendering and does
+  not alter cutaway geometry, prediction, collision, or world blocks.
