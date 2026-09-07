@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.22
+
+- Submits every exposed cutaway boundary face through an opaque, no-cull,
+  depth-writing shader-aware render pass.
+- Prevents Oculus translucent sorting from dropping or reordering the dark
+  cavity-wall faces.
+- Designed for BlackForge Unbound 1.14's whole-block owner matching.
+
 ## 0.4.21
 
 - Removes the player-height ground-collision exception from both the vanilla

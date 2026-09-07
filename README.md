@@ -1,6 +1,6 @@
 # BlackForge TLC Camera
 
-## Version 0.4.21
+## Version 0.4.22
 
 - Uses a dynamic player-to-camera Embeddium occlusion region instead of the
   previous fixed 3x3x3 section bubble. At the 12-block camera limit this
@@ -8,6 +8,8 @@
 - Uses 20% release-only overlap to prevent cutaway edge flicker.
 - Allows the no-collision camera to pass through terrain at and below the
   player's block level in both vanilla and Leawind camera paths.
+- Renders exposed cavity-wall faces through an opaque, no-cull, depth-writing
+  shader-aware pass so they remain visible with BlackForge Unbound 1.14.
 - Keeps the legacy mod id internally for compatibility with existing installs.
 
 ## BlackForge v0.4.10 stone-boundary fade
