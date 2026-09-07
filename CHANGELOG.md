@@ -1,13 +1,12 @@
 # Changelog
 
-## 0.4.15-mesh-test
+## 0.4.19
 
-- Diagnostic build based exactly on 0.4.15.
-- Temporarily disables vanilla and Embeddium block suppression and boundary
-  face hooks to test whether asynchronous cached chunk meshes cause the
-  angle-dependent disappearance of terrain.
-- Leaves camera behavior, TaCZ compatibility, aiming, player visibility,
-  shader uniforms, and the 12-block maximum camera distance unchanged.
+- Uses the complete 0.4.15 implementation as its base.
+- Treats the player-centered 3x3x3 group of Embeddium render sections as
+  internally open for terrain-occlusion traversal.
+- Preserves normal terrain occlusion outside those 27 sections and leaves
+  frustum culling, render distance, block geometry, and cutaway geometry intact.
 
 ## 0.4.10
 
