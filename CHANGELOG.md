@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.21
+
+- Removes the player-height ground-collision exception from both the vanilla
+  and Leawind camera paths.
+- Camera collision bypass now remains active at and below the player's level.
+- Keeps the dynamic player-to-camera occlusion region and 20% cutaway
+  hysteresis introduced in 0.4.20.
+
+## 0.4.20 - BlackForge TLC Camera
+
+- Renames the displayed mod and build artifact to BlackForge TLC Camera.
+- Replaces the fixed player-centered 3x3x3 Embeddium occlusion bubble with
+  the minimal dynamic section box spanning the player and camera (normally
+  no more than 2x2x2 / eight sections at the 12-block camera limit).
+- Raises release-only cutaway hysteresis from 15% to 20% to reduce edge
+  flicker without enlarging the active cutaway.
+- Keeps the existing mod id for save, config, and integration compatibility.
+
 ## 0.4.19
 
 - Uses the complete 0.4.15 implementation as its base.

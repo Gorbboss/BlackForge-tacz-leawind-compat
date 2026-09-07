@@ -37,7 +37,7 @@ public final class HiddenBlockManager {
      */
     private static final double TRIGGER_RAY_OFFSET = 0.85D;
     private static final double MIDPOINT_WEDGE_SAMPLE_OFFSET = 1.75D;
-    private static final double RELEASE_OVERLAP = 1.15D;
+    private static final double RELEASE_OVERLAP = 1.20D;
     private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
             ThreadLocal.withInitial(() -> false);
 

@@ -1,7 +1,6 @@
 package com.blackforge.taczleawind.mixin;
 
 import com.blackforge.taczleawind.ClientConfig;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.ClipContext;
@@ -49,12 +48,6 @@ public abstract class LeawindCameraNoClipMixin {
         Vec3 from = context.getFrom();
         Vec3 to = context.getTo();
         Vec3 delta = to.subtract(from);
-
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null
-                && Math.floor(to.y) <= Math.floor(mc.player.getY())) {
-            return level.clip(context);
-        }
 
         return BlockHitResult.miss(
                 to,
