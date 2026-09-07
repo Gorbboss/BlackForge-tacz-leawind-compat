@@ -30,8 +30,8 @@ public abstract class EmbeddiumBlockOcclusionMixin {
             Direction facing,
             CallbackInfoReturnable<Boolean> cir
     ) {
-        if (!HiddenBlockManager.isHidden(pos)
-                && HiddenBlockManager.isHidden(pos.relative(facing))) {
+        if (!HiddenBlockManager.isCutaway(pos)
+                && HiddenBlockManager.isCutaway(pos.relative(facing))) {
             cir.setReturnValue(true);
         }
     }

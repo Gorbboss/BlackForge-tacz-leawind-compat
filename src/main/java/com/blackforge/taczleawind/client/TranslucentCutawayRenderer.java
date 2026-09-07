@@ -46,6 +46,13 @@ public final class TranslucentCutawayRenderer {
                 InventoryMenu.BLOCK_ATLAS
         );
         VertexConsumer translucentBuffer = buffers.getBuffer(shaderAwareTranslucent);
+        // Boundary faces are opaque camera-cavity walls. A cutout/no-cull
+        // entity pass gives Oculus a depth-writing shader-aware draw and
+        // prevents translucent sorting from dropping or reordering faces.
+        RenderType shaderAwareBoundary = RenderType.entityCutoutNoCull(
+                InventoryMenu.BLOCK_ATLAS
+        );
+        VertexConsumer boundaryBuffer = buffers.getBuffer(shaderAwareBoundary);
         BlockRenderDispatcher dispatcher = mc.getBlockRenderer();
         RandomSource random = RandomSource.create();
 
@@ -89,12 +96,13 @@ public final class TranslucentCutawayRenderer {
             );
             random.setSeed(state.getSeed(face.pos()));
             dispatcher.renderBatched(state, face.pos(), mc.level, poseStack,
-                    new UnlitFaceVertexConsumer(translucentBuffer, face.face()),
+                    new UnlitFaceVertexConsumer(boundaryBuffer, face.face()),
                     false, random);
             poseStack.popPose();
         }
 
         buffers.endBatch(shaderAwareTranslucent);
+        buffers.endBatch(shaderAwareBoundary);
     }
 
     private static final class AlphaVertexConsumer implements VertexConsumer {

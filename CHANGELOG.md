@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.23
+
+- Keeps a separate cutaway-cell snapshot while shaders are active instead of
+  clearing the only set used by Embeddium's face-visibility hooks.
+- Rebuilds only sections whose cutaway membership changed, including their
+  neighboring sections.
+- Forces real textured faces on every surviving block adjacent to a
+  shader-removed block, eliminating the missing-geometry X-ray cavity.
+- Keeps full original block geometry in the shader/shadow mesh; only the main
+  camera shader discards cutaway blocks.
+
 ## 0.4.22
 
 - Submits every exposed cutaway boundary face through an opaque, no-cull,

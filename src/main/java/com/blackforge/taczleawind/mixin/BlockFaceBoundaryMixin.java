@@ -22,7 +22,8 @@ public abstract class BlockFaceBoundaryMixin {
             BlockPos neighborPos,
             CallbackInfoReturnable<Boolean> cir
     ) {
-        if (!HiddenBlockManager.isHidden(pos) && HiddenBlockManager.isHidden(neighborPos)) {
+        if (!HiddenBlockManager.isCutaway(pos)
+                && HiddenBlockManager.isCutaway(neighborPos)) {
             cir.setReturnValue(true);
         }
     }

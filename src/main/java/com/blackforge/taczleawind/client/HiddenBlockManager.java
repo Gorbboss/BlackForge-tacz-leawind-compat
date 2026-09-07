@@ -42,6 +42,10 @@ public final class HiddenBlockManager {
             ThreadLocal.withInitial(() -> false);
 
     private static volatile Set<BlockPos> hidden = Set.of();
+    // Always tracks the CPU cutaway, including while a shader performs the
+    // actual fragment removal. Mesh workers use this separate snapshot to
+    // emit normally-culled faces on the surviving cavity wall.
+    private static volatile Set<BlockPos> cutaway = Set.of();
     private static volatile Map<BlockPos, Float> translucent = Map.of();
     private static volatile Map<BoundaryFace, Float> boundaryFaces = Map.of();
     private static volatile Map<BlockPos, Integer> retainedLayers = Map.of();
@@ -56,7 +60,7 @@ public final class HiddenBlockManager {
     }
 
     public static boolean isCutaway(BlockPos pos) {
-        return hidden.contains(pos);
+        return cutaway.contains(pos);
     }
 
     public static Map<BlockPos, Float> translucentSnapshot() {
@@ -104,11 +108,12 @@ public final class HiddenBlockManager {
 
     private static void clearHiddenBlocks(Minecraft mc) {
         translucent = Map.of();
-        Set<BlockPos> old = hidden;
-        if (old.isEmpty()) return;
+        HashSet<BlockPos> changed = new HashSet<>(hidden);
+        changed.addAll(cutaway);
 
         hidden = Set.of();
-        markDirty(mc, old);
+        cutaway = Set.of();
+        if (!changed.isEmpty()) markDirty(mc, changed);
     }
 
     private static void closeSmoothly(Minecraft mc) {
@@ -122,15 +127,10 @@ public final class HiddenBlockManager {
 
     private static void closeShaderOverlay(Minecraft mc) {
         updateBoundary(Set.of());
-        translucent = Map.of();
         retainedLayers = Map.of();
         retainedReleaseRadii = Map.of();
         retainedEndDistance = -1.0D;
-        if (!hidden.isEmpty()) {
-            Set<BlockPos> old = hidden;
-            hidden = Set.of();
-            markDirty(mc, old);
-        }
+        clearHiddenBlocks(mc);
     }
 
     public static void update() {
@@ -323,10 +323,7 @@ public final class HiddenBlockManager {
 
         // Visibility now switches immediately in both directions.
         if (ShaderPackDetector.isShaderPackActive()) {
-            Set<BlockPos> oldHidden = hidden;
-            hidden = Set.of();
-            translucent = Map.copyOf(targetTranslucent);
-            if (!oldHidden.isEmpty()) markDirty(mc, oldHidden);
+            publishShaderCutaway(mc, targetMutable, targetTranslucent);
             return;
         }
         publish(mc, targetMutable, targetTranslucent);
@@ -358,11 +355,32 @@ public final class HiddenBlockManager {
             newlyChanged.removeAll(old);
             changed.addAll(newlyChanged);
             hidden = next;
+            cutaway = next;
             translucent = nextFade;
             markDirty(mc, changed);
         } else if (!nextFade.equals(translucent)) {
+            cutaway = next;
             translucent = nextFade;
         }
+    }
+
+    private static void publishShaderCutaway(
+            Minecraft mc, Set<BlockPos> positions, Map<BlockPos, Float> opacities
+    ) {
+        Set<BlockPos> next = Set.copyOf(positions);
+        HashSet<BlockPos> changed = new HashSet<>(cutaway);
+        changed.removeAll(next);
+        HashSet<BlockPos> entered = new HashSet<>(next);
+        entered.removeAll(cutaway);
+        changed.addAll(entered);
+        // If shaders were enabled while vanilla cutaway blocks were hidden,
+        // those sections must also rebuild with their complete block meshes.
+        changed.addAll(hidden);
+
+        hidden = Set.of();
+        cutaway = next;
+        translucent = Map.copyOf(opacities);
+        if (!changed.isEmpty()) markDirty(mc, changed);
     }
 
     private static CutawayObstruction findObstruction(

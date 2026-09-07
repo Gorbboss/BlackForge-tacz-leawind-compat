@@ -52,8 +52,8 @@ public abstract class EmbeddiumBlockRendererMixin {
     ) {
         BlockPos pos = blackforge$getPosition(context);
         if (pos != null
-                && !HiddenBlockManager.isHidden(pos)
-                && HiddenBlockManager.isHidden(pos.relative(face))) {
+                && !HiddenBlockManager.isCutaway(pos)
+                && HiddenBlockManager.isCutaway(pos.relative(face))) {
             cir.setReturnValue(true);
         }
     }
