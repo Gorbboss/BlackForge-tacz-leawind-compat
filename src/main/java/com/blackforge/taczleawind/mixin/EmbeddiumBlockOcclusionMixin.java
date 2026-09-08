@@ -30,8 +30,12 @@ public abstract class EmbeddiumBlockOcclusionMixin {
             Direction facing,
             CallbackInfoReturnable<Boolean> cir
     ) {
-        if (!HiddenBlockManager.isCutaway(pos)
-                && HiddenBlockManager.isCutaway(pos.relative(facing))) {
+        BlockPos neighbor = pos.relative(facing);
+        boolean currentBoundary = !HiddenBlockManager.isCutaway(pos)
+                && HiddenBlockManager.isCutaway(neighbor);
+        boolean preparedBoundary = !HiddenBlockManager.isForcedFaceCell(pos)
+                && HiddenBlockManager.isForcedFaceCell(neighbor);
+        if (currentBoundary || preparedBoundary) {
             cir.setReturnValue(true);
         }
     }

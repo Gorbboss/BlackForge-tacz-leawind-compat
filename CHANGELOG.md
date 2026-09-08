@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.24
+
+- Precompiles the real textured cavity-wall layer around the shader cutaway.
+- Adds a one-block face-preparation look-ahead along the dominant direction of
+  camera movement, so the next exposed wall is meshed before it is revealed.
+- Changes the 20% multiplicative release overlap into a true 100% one-block
+  release margin for the cutaway radius and shortening endpoint.
+- Rebuilds sections only when the prepared face-cell membership changes.
+
 ## 0.4.23
 
 - Keeps a separate cutaway-cell snapshot while shaders are active instead of

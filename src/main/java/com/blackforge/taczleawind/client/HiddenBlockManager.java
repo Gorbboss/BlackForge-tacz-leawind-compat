@@ -37,7 +37,8 @@ public final class HiddenBlockManager {
      */
     private static final double TRIGGER_RAY_OFFSET = 0.85D;
     private static final double MIDPOINT_WEDGE_SAMPLE_OFFSET = 1.75D;
-    private static final double RELEASE_OVERLAP = 1.20D;
+    // A true one-block release margin: 100% of one Minecraft block.
+    private static final double RELEASE_MARGIN_BLOCKS = 1.0D;
     private static final ThreadLocal<Boolean> OVERLAY_RENDERING =
             ThreadLocal.withInitial(() -> false);
 
@@ -46,6 +47,9 @@ public final class HiddenBlockManager {
     // actual fragment removal. Mesh workers use this separate snapshot to
     // emit normally-culled faces on the surviving cavity wall.
     private static volatile Set<BlockPos> cutaway = Set.of();
+    // Includes the active cutaway plus a one-block camera-motion look-ahead.
+    // Mesh hooks use this to generate cavity faces before they are exposed.
+    private static volatile Set<BlockPos> forcedFaceCells = Set.of();
     private static volatile Map<BlockPos, Float> translucent = Map.of();
     private static volatile Map<BoundaryFace, Float> boundaryFaces = Map.of();
     private static volatile Map<BlockPos, Integer> retainedLayers = Map.of();
@@ -61,6 +65,10 @@ public final class HiddenBlockManager {
 
     public static boolean isCutaway(BlockPos pos) {
         return cutaway.contains(pos);
+    }
+
+    public static boolean isForcedFaceCell(BlockPos pos) {
+        return forcedFaceCells.contains(pos);
     }
 
     public static Map<BlockPos, Float> translucentSnapshot() {
@@ -110,9 +118,11 @@ public final class HiddenBlockManager {
         translucent = Map.of();
         HashSet<BlockPos> changed = new HashSet<>(hidden);
         changed.addAll(cutaway);
+        changed.addAll(forcedFaceCells);
 
         hidden = Set.of();
         cutaway = Set.of();
+        forcedFaceCells = Set.of();
         if (!changed.isEmpty()) markDirty(mc, changed);
     }
 
@@ -189,8 +199,8 @@ public final class HiddenBlockManager {
         double rawEndDistance = normalEndDistance;
         double cutawayEndDistance = rawEndDistance;
         if (retainedEndDistance > rawEndDistance
-                && retainedEndDistance <= rawEndDistance * RELEASE_OVERLAP) {
-            cutawayEndDistance = Math.min(normalEndDistance, retainedEndDistance);
+                && retainedEndDistance <= rawEndDistance + RELEASE_MARGIN_BLOCKS) {
+            cutawayEndDistance = retainedEndDistance;
         }
         retainedEndDistance = cutawayEndDistance;
         Vec3 end = predictedCameraPos.add(
@@ -217,7 +227,7 @@ public final class HiddenBlockManager {
 
         double blockAllowance = Math.sqrt(3.0D) * 0.5D;
         double searchRadius = TUBE_RADIUS + blockAllowance;
-        searchRadius *= RELEASE_OVERLAP;
+        searchRadius += RELEASE_MARGIN_BLOCKS;
 
         int minX = (int) Math.floor(Math.min(start.x, end.x) - searchRadius);
         int minY = (int) Math.floor(Math.min(start.y, end.y) - searchRadius);
@@ -323,7 +333,10 @@ public final class HiddenBlockManager {
 
         // Visibility now switches immediately in both directions.
         if (ShaderPackDetector.isShaderPackActive()) {
-            publishShaderCutaway(mc, targetMutable, targetTranslucent);
+            publishShaderCutaway(
+                    mc, targetMutable, targetTranslucent,
+                    buildForcedFaceCells(targetMutable, predictionOffset)
+            );
             return;
         }
         publish(mc, targetMutable, targetTranslucent);
@@ -338,7 +351,7 @@ public final class HiddenBlockManager {
     }
 
     private static double releaseBoundary(double innerEdge) {
-        return innerEdge * RELEASE_OVERLAP;
+        return innerEdge + RELEASE_MARGIN_BLOCKS;
     }
 
     private static void publish(
@@ -356,22 +369,28 @@ public final class HiddenBlockManager {
             changed.addAll(newlyChanged);
             hidden = next;
             cutaway = next;
+            forcedFaceCells = next;
             translucent = nextFade;
             markDirty(mc, changed);
         } else if (!nextFade.equals(translucent)) {
             cutaway = next;
+            forcedFaceCells = next;
             translucent = nextFade;
         }
     }
 
     private static void publishShaderCutaway(
-            Minecraft mc, Set<BlockPos> positions, Map<BlockPos, Float> opacities
+            Minecraft mc,
+            Set<BlockPos> positions,
+            Map<BlockPos, Float> opacities,
+            Set<BlockPos> preparedFaces
     ) {
         Set<BlockPos> next = Set.copyOf(positions);
-        HashSet<BlockPos> changed = new HashSet<>(cutaway);
-        changed.removeAll(next);
-        HashSet<BlockPos> entered = new HashSet<>(next);
-        entered.removeAll(cutaway);
+        Set<BlockPos> nextPrepared = Set.copyOf(preparedFaces);
+        HashSet<BlockPos> changed = new HashSet<>(forcedFaceCells);
+        changed.removeAll(nextPrepared);
+        HashSet<BlockPos> entered = new HashSet<>(nextPrepared);
+        entered.removeAll(forcedFaceCells);
         changed.addAll(entered);
         // If shaders were enabled while vanilla cutaway blocks were hidden,
         // those sections must also rebuild with their complete block meshes.
@@ -379,8 +398,38 @@ public final class HiddenBlockManager {
 
         hidden = Set.of();
         cutaway = next;
+        forcedFaceCells = nextPrepared;
         translucent = Map.copyOf(opacities);
         if (!changed.isEmpty()) markDirty(mc, changed);
+    }
+
+    private static Set<BlockPos> buildForcedFaceCells(
+            Set<BlockPos> activeCutaway, Vec3 cameraMotion
+    ) {
+        HashSet<BlockPos> prepared = new HashSet<>(activeCutaway);
+        if (cameraMotion.lengthSqr() < 1.0E-5D) return prepared;
+
+        // Advance one whole block along the dominant camera-motion axis. The
+        // shifted cells make Embeddium compile the next cavity wall before the
+        // shader cutaway reaches it.
+        double ax = Math.abs(cameraMotion.x);
+        double ay = Math.abs(cameraMotion.y);
+        double az = Math.abs(cameraMotion.z);
+        int stepX = 0;
+        int stepY = 0;
+        int stepZ = 0;
+        if (ax >= ay && ax >= az) {
+            stepX = cameraMotion.x < 0.0D ? -1 : 1;
+        } else if (ay >= az) {
+            stepY = cameraMotion.y < 0.0D ? -1 : 1;
+        } else {
+            stepZ = cameraMotion.z < 0.0D ? -1 : 1;
+        }
+
+        for (BlockPos pos : activeCutaway) {
+            prepared.add(pos.offset(stepX, stepY, stepZ));
+        }
+        return prepared;
     }
 
     private static CutawayObstruction findObstruction(
