@@ -1,7 +1,9 @@
 package com.blackforge.taczleawind;
 
 import com.blackforge.taczleawind.client.ClientEvents;
+import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
@@ -16,6 +18,12 @@ public final class BlackForgeCompat {
                 ClientConfig.SPEC,
                 "blackforge-tacz-leawind.toml"
         );
-        MinecraftForge.EVENT_BUS.register(ClientEvents.class);
+        DistExecutor.safeRunWhenOn(Dist.CLIENT, () -> ClientOnly::register);
+    }
+
+    private static final class ClientOnly {
+        private static void register() {
+            MinecraftForge.EVENT_BUS.register(ClientEvents.class);
+        }
     }
 }

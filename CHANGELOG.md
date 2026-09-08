@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.26
+
+- Removes the 0.4.25 client-tick player-rotation override that caused the
+  character to snap toward the crosshair while firing.
+- Intercepts TaCZ's final server firing direction instead: non-ADS shots use
+  zero pitch and the character body yaw, while ADS keeps TaCZ's original
+  camera/crosshair pitch and yaw.
+- Makes initialization dedicated-server safe; this version must be installed
+  on both client and server for corrected multiplayer bullet direction.
+
 ## 0.4.25
 
 - Expands the shader cutaway face-preparation shell to two blocks, while retaining directional camera look-ahead.

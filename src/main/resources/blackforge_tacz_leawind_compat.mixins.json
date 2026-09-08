@@ -4,6 +4,9 @@
   "package": "com.blackforge.taczleawind.mixin",
   "compatibilityLevel": "JAVA_17",
   "refmap": "blackforge_tacz_leawind_compat.refmap.json",
+  "mixins": [
+    "TaczServerShootDirectionMixin"
+  ],
   "client": [
     "TaczCameraRecoilMixin",
     "TaczCrosshairMixin",

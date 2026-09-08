@@ -1,6 +1,6 @@
 # BlackForge TLC Camera
 
-## Version 0.4.25
+## Version 0.4.26
 
 - Uses a dynamic player-to-camera Embeddium occlusion region instead of the
   previous fixed 3x3x3 section bubble. At the 12-block camera limit this
@@ -18,6 +18,9 @@
 - Outside ADS, holds the third-person character's aim perfectly level and
   makes attacks follow the character's horizontal facing direction.
 - While ADS, preserves normal crosshair-directed aiming and shooting.
+- Applies hip-fire direction at TaCZ's final server shooting method instead
+  of rotating the local player, preventing the character from snapping toward
+  the crosshair. Install this mod on both client and server.
 - Keeps the legacy mod id internally for compatibility with existing installs.
 
 ## BlackForge v0.4.10 stone-boundary fade

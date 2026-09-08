@@ -4,6 +4,7 @@ import com.blackforge.taczleawind.ClientConfig;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
@@ -33,10 +34,20 @@ public final class ForwardAimGuard {
             return;
         }
 
+        Vec3 playerEye = player.getEyePosition(partialTick);
+
+        // ADS retains the camera/crosshair ray. Hip fire and ordinary attacks
+        // use a perfectly level ray along the rendered character's body.
+        if (!ScopedFirstPersonController.isAiming(player)) {
+            float bodyYaw = Mth.rotLerp(partialTick, player.yBodyRotO, player.yBodyRot);
+            setPick(mc, player, playerEye,
+                    Vec3.directionFromRotation(0.0F, bodyYaw).normalize());
+            return;
+        }
+
         Camera camera = mc.gameRenderer.getMainCamera();
         Vec3 cameraPos = camera.getPosition();
         Vec3 crosshairDirection = new Vec3(camera.getLookVector()).normalize();
-        Vec3 playerEye = player.getEyePosition(partialTick);
 
         // The second camera-to-player ray supplies the forward cutoff plane.
         double cameraToPlayerAlongCrosshair =
@@ -47,9 +58,14 @@ public final class ForwardAimGuard {
         Vec3 acceptedStart = cameraPos.add(
                 crosshairDirection.scale(acceptedStartDistance)
         );
-        Vec3 end = acceptedStart.add(
-                crosshairDirection.scale(mc.gameMode.getPickRange())
-        );
+        setPick(mc, player, acceptedStart, crosshairDirection);
+    }
+
+    private static void setPick(
+            Minecraft mc, LocalPlayer player, Vec3 acceptedStart,
+            Vec3 direction
+    ) {
+        Vec3 end = acceptedStart.add(direction.scale(mc.gameMode.getPickRange()));
 
         HitResult blockHit = mc.level.clip(new ClipContext(
                 acceptedStart,

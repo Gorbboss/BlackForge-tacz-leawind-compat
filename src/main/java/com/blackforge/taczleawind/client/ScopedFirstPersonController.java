@@ -35,7 +35,7 @@ public final class ScopedFirstPersonController {
         }
 
         ItemStack stack = player.getMainHandItem();
-        boolean eligible = blackforge$isAiming(player)
+        boolean eligible = isAiming(player)
                 && blackforge$getAimingZoom(stack) > FIRST_PERSON_MAGNIFICATION_THRESHOLD;
         if (!eligible) {
             blackforge$reset();
@@ -70,7 +70,7 @@ public final class ScopedFirstPersonController {
         ticksAtFullAim = -1;
     }
 
-    private static boolean blackforge$isAiming(LocalPlayer player) {
+    public static boolean isAiming(LocalPlayer player) {
         try {
             Method method = AIM_METHODS.computeIfAbsent(
                     player.getClass(),
