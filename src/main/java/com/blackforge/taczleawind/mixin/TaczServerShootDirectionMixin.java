@@ -1,5 +1,6 @@
 package com.blackforge.taczleawind.mixin;
 
+import com.blackforge.taczleawind.network.TacticalAttackNetwork;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Final;
@@ -60,7 +61,8 @@ public abstract class TaczServerShootDirectionMixin {
     }
 
     private boolean blackforge$useHipFireDirection() {
-        if (!(shooter instanceof ServerPlayer)) return false;
+        if (!(shooter instanceof ServerPlayer player)
+                || !TacticalAttackNetwork.isActive(player)) return false;
         return !blackforge$isAiming();
     }
 

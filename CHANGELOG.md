@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.27
+
+- Makes the forward attack behavior conditional on rear third person,
+  BlackForge Movement Tactical stance, no ADS, and an eligible held item.
+- Includes swords, axes, and TaCZ guns automatically, with a client-config list
+  for additional item IDs.
+- Suppresses Leawind's attack-key interaction rotation only while those
+  conditions are active.
+- Synchronizes that state for matching authoritative TaCZ shot direction.
+- Keeps BlackForge Movement optional and preserves Passive/ADS behavior.
+
 ## 0.4.26
 
 - Removes the 0.4.25 client-tick player-rotation override that caused the

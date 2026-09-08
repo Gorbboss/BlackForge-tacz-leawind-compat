@@ -13,6 +13,7 @@
     "CameraNoClipMixin",
     "LeawindCameraNoClipMixin",
     "LeawindPerspectiveLockMixin",
+    "LeawindTacticalAttackMixin",
     "LeawindPlayerRenderMixin",
     "GameRendererPickMixin",
     "LocalPlayerVisibilityMixin",

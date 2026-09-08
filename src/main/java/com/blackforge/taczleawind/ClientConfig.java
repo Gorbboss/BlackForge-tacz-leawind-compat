@@ -2,6 +2,8 @@ package com.blackforge.taczleawind;
 
 import net.minecraftforge.common.ForgeConfigSpec;
 
+import java.util.List;
+
 public final class ClientConfig {
     public static final ForgeConfigSpec SPEC;
 
@@ -11,6 +13,7 @@ public final class ClientConfig {
     public static final ForgeConfigSpec.BooleanValue FORWARD_ONLY_TARGETING;
     public static final ForgeConfigSpec.DoubleValue HIDE_CORRIDOR_RADIUS;
     public static final ForgeConfigSpec.DoubleValue FORWARD_HEMISPHERE_DEGREES;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> TACTICAL_FORWARD_ITEMS;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -42,6 +45,17 @@ public final class ClientConfig {
         FORWARD_HEMISPHERE_DEGREES = b
                 .comment("Half-angle of legal horizontal aiming cone. 90 = complete front hemisphere.")
                 .defineInRange("forwardHemisphereDegrees", 90.0D, 30.0D, 90.0D);
+
+        TACTICAL_FORWARD_ITEMS = b
+                .comment("Extra item IDs that attack straight ahead while BlackForge Movement is in Tactical stance.",
+                        "Swords, axes, and TaCZ guns are included automatically.",
+                        "Example: [\"minecraft:trident\", \"othermod:combat_knife\"]")
+                .defineListAllowEmpty(
+                        List.of("tacticalForwardItems"),
+                        List::of,
+                        value -> value instanceof String id
+                                && net.minecraft.resources.ResourceLocation.tryParse(id) != null
+                );
         b.pop();
 
         SPEC = b.build();

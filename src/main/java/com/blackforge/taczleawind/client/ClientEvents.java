@@ -1,5 +1,6 @@
 package com.blackforge.taczleawind.client;
 
+import com.blackforge.taczleawind.network.TacticalAttackNetwork;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.event.TickEvent;
@@ -7,6 +8,9 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 public final class ClientEvents {
+    private static boolean lastTacticalAttackState;
+    private static boolean tacticalStateSent;
+
     @SubscribeEvent
     public static void clientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
@@ -17,6 +21,17 @@ public final class ClientEvents {
         }
 
         ScopedFirstPersonController.update();
+        net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
+        if (minecraft.player != null && minecraft.getConnection() != null) {
+            boolean tacticalAttackState = TacticalForwardAttack.isActive();
+            if (!tacticalStateSent || tacticalAttackState != lastTacticalAttackState) {
+                TacticalAttackNetwork.send(tacticalAttackState);
+                lastTacticalAttackState = tacticalAttackState;
+                tacticalStateSent = true;
+            }
+        } else {
+            tacticalStateSent = false;
+        }
         LeawindZoomIntegration.update();
         HiddenBlockManager.update();
     }

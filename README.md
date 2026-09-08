@@ -1,5 +1,15 @@
 # BlackForge TLC Camera
 
+## Version 0.4.27
+
+- BlackForge Movement is optional. When it is installed and Tactical stance is
+  enabled, rear-third-person attacks no longer make Leawind rotate the player
+  toward the camera crosshair.
+- The forward-facing rule applies to swords, axes, TaCZ guns, and item IDs in
+  `tacticalForwardItems`. Passive stance and ADS keep normal crosshair aiming.
+- Synchronizes the Tactical forward-attack state to the server so TaCZ bullets
+  use the same level body-facing direction in multiplayer.
+
 ## Version 0.4.26
 
 - Uses a dynamic player-to-camera Embeddium occlusion region instead of the
@@ -169,6 +179,7 @@ Defaults:
 - hideCorridorRadius = 0.32
 - forwardOnlyTargeting = true
 - forwardHemisphereDegrees = 90
+- tacticalForwardItems = []
 
 ## Important
 
