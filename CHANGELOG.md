@@ -1,33 +1,5 @@
 # Changelog
 
-## 0.4.24
-
-- Precompiles the real textured cavity-wall layer around the shader cutaway.
-- Adds a one-block face-preparation look-ahead along the dominant direction of
-  camera movement, so the next exposed wall is meshed before it is revealed.
-- Changes the 20% multiplicative release overlap into a true 100% one-block
-  release margin for the cutaway radius and shortening endpoint.
-- Rebuilds sections only when the prepared face-cell membership changes.
-
-## 0.4.23
-
-- Keeps a separate cutaway-cell snapshot while shaders are active instead of
-  clearing the only set used by Embeddium's face-visibility hooks.
-- Rebuilds only sections whose cutaway membership changed, including their
-  neighboring sections.
-- Forces real textured faces on every surviving block adjacent to a
-  shader-removed block, eliminating the missing-geometry X-ray cavity.
-- Keeps full original block geometry in the shader/shadow mesh; only the main
-  camera shader discards cutaway blocks.
-
-## 0.4.22
-
-- Submits every exposed cutaway boundary face through an opaque, no-cull,
-  depth-writing shader-aware render pass.
-- Prevents Oculus translucent sorting from dropping or reordering the dark
-  cavity-wall faces.
-- Designed for BlackForge Unbound 1.14's whole-block owner matching.
-
 ## 0.4.21
 
 - Removes the player-height ground-collision exception from both the vanilla

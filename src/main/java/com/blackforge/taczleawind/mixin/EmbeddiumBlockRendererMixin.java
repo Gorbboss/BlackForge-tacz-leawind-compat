@@ -51,13 +51,9 @@ public abstract class EmbeddiumBlockRendererMixin {
             CallbackInfoReturnable<Boolean> cir
     ) {
         BlockPos pos = blackforge$getPosition(context);
-        if (pos == null) return;
-        BlockPos neighbor = pos.relative(face);
-        boolean currentBoundary = !HiddenBlockManager.isCutaway(pos)
-                && HiddenBlockManager.isCutaway(neighbor);
-        boolean preparedBoundary = !HiddenBlockManager.isForcedFaceCell(pos)
-                && HiddenBlockManager.isForcedFaceCell(neighbor);
-        if (currentBoundary || preparedBoundary) {
+        if (pos != null
+                && !HiddenBlockManager.isHidden(pos)
+                && HiddenBlockManager.isHidden(pos.relative(face))) {
             cir.setReturnValue(true);
         }
     }

@@ -22,11 +22,7 @@ public abstract class BlockFaceBoundaryMixin {
             BlockPos neighborPos,
             CallbackInfoReturnable<Boolean> cir
     ) {
-        boolean currentBoundary = !HiddenBlockManager.isCutaway(pos)
-                && HiddenBlockManager.isCutaway(neighborPos);
-        boolean preparedBoundary = !HiddenBlockManager.isForcedFaceCell(pos)
-                && HiddenBlockManager.isForcedFaceCell(neighborPos);
-        if (currentBoundary || preparedBoundary) {
+        if (!HiddenBlockManager.isHidden(pos) && HiddenBlockManager.isHidden(neighborPos)) {
             cir.setReturnValue(true);
         }
     }
