@@ -3,10 +3,20 @@ package com.blackforge.taczleawind.client;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 public final class ClientEvents {
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void aimTick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) {
+            // Run before TaCZ's normal-priority shoot key handler so the
+            // server-bound shot reads the corrected non-ADS rotation.
+            ThirdPersonAimController.update();
+        }
+    }
+
     @SubscribeEvent
     public static void clientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
