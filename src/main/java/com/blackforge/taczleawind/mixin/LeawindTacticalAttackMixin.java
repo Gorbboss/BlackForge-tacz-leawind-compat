@@ -29,23 +29,6 @@ public abstract class LeawindTacticalAttackMixin {
 
     @Inject(method = "setRawRotation", at = @At("HEAD"), cancellable = true, require = 0)
     private void blackforge$applyStanceRotation(Vector2d rotation, CallbackInfo ci) {
-        if (TacticalForwardAttack.isTacticalCrosshairMode()) {
-            Vector2d crosshairRotation = blackforge$getCrosshairRotation();
-            if (crosshairRotation != null) {
-                rotation.set(crosshairRotation);
-                // Keep the rendered body facing the tactical aim direction so
-                // backwards movement cannot leave a stale 180-degree body yaw
-                // for ADS to reconcile on the next frame. Do not write head
-                // yaw: Fresh Animations retains control of its ADS head tilt.
-                LocalPlayer player = Minecraft.getInstance().player;
-                if (player != null) {
-                    player.yBodyRot = (float) crosshairRotation.y;
-                    player.yBodyRotO = (float) crosshairRotation.y;
-                }
-            }
-            return;
-        }
-
         if (TacticalForwardAttack.isPassiveHorizontalAimMode()) {
             Vector2d crosshairRotation = blackforge$getCrosshairRotation();
             if (crosshairRotation != null) {

@@ -33,13 +33,6 @@ public final class TacticalForwardAttack {
         return isEligible(player.getMainHandItem());
     }
 
-    /** Tactical hip-fire continuously follows the camera crosshair. */
-    public static boolean isTacticalCrosshairMode() {
-        return isEligibleThirdPerson()
-                && movementTacticalEnabled()
-                && !isAdsRequested();
-    }
-
     /** Passive hip-fire remains level and follows the character's facing. */
     public static boolean isPassiveForwardMode() {
         return isPassiveMode() && !isAdsRequested();

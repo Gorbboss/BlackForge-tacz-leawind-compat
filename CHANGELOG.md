@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.32
+
+- Cancels TaCZ FOV magnification in Passive without canceling its aiming state.
+- Keeps Passive right-click horizontal crosshair facing and level firing.
+- Limits high-magnification temporary first person to Tactical ADS.
+- Removes Tactical hip-fire crosshair forcing and all direct body/head yaw
+  writes, restoring Leawind movement turning and Fresh Animations head tilt.
+
 ## 0.4.31
 
 - Adds 12-block Passive and 9-block Tactical camera distance limits.

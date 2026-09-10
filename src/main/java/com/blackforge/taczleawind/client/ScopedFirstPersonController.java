@@ -35,7 +35,8 @@ public final class ScopedFirstPersonController {
         }
 
         ItemStack stack = player.getMainHandItem();
-        boolean eligible = isAiming(player)
+        boolean eligible = TacticalForwardAttack.movementTacticalEnabled()
+                && isAiming(player)
                 && blackforge$getAimingZoom(stack) > FIRST_PERSON_MAGNIFICATION_THRESHOLD;
         if (!eligible) {
             blackforge$reset();

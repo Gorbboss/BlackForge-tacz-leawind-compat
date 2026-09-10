@@ -1,5 +1,18 @@
 # BlackForge TLC Camera
 
+## Version 0.4.32
+
+- Passive right-click keeps TaCZ's aiming state active for animations but
+  cancels TaCZ world-FOV magnification, so the screen does not zoom.
+- Passive right-click turns the character precisely toward the crosshair's
+  horizontal direction while retaining zero pitch.
+- Disables the >2.5x temporary first-person scope transition in Passive;
+  Tactical retains the existing scope behavior.
+- Removes every Tactical hip-fire rotation override and all direct body/head
+  writes. Leawind again controls normal movement turning until native ADS takes
+  over, which restores Fresh Animations head tilt and removes the backwards
+  movement handoff flicker.
+
 ## Version 0.4.31
 
 - Sets the Leawind camera ceiling dynamically: 12 blocks in Passive and 9
