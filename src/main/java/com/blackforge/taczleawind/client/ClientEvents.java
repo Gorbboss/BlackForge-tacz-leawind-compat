@@ -10,6 +10,7 @@ import net.minecraftforge.fml.common.Mod;
 public final class ClientEvents {
     private static boolean lastTacticalAttackState;
     private static boolean tacticalStateSent;
+    private static float lastPassiveFacingYaw;
 
     @SubscribeEvent
     public static void clientTick(TickEvent.ClientTickEvent event) {
@@ -21,12 +22,19 @@ public final class ClientEvents {
         }
 
         ScopedFirstPersonController.update();
+        TacticalForwardAttack.updateAdsTransition();
         net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
         if (minecraft.player != null && minecraft.getConnection() != null) {
             boolean passiveForwardState = TacticalForwardAttack.isPassiveForwardMode();
-            if (!tacticalStateSent || passiveForwardState != lastTacticalAttackState) {
-                TacticalAttackNetwork.send(passiveForwardState);
+            float facingYaw = minecraft.player.yBodyRot;
+            if (!tacticalStateSent
+                    || passiveForwardState != lastTacticalAttackState
+                    || (passiveForwardState
+                    && Math.abs(net.minecraft.util.Mth.wrapDegrees(
+                    facingYaw - lastPassiveFacingYaw)) > 0.25F)) {
+                TacticalAttackNetwork.send(passiveForwardState, facingYaw);
                 lastTacticalAttackState = passiveForwardState;
+                lastPassiveFacingYaw = facingYaw;
                 tacticalStateSent = true;
             }
         } else {

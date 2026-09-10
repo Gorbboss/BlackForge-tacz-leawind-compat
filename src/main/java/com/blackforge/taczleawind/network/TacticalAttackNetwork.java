@@ -10,14 +10,14 @@ import net.minecraftforge.network.NetworkEvent;
 import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.simple.SimpleChannel;
 
-import java.util.Set;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 public final class TacticalAttackNetwork {
-    private static final String PROTOCOL = "1";
-    private static final Set<UUID> ACTIVE_PLAYERS = ConcurrentHashMap.newKeySet();
+    private static final String PROTOCOL = "2";
+    private static final Map<UUID, Float> ACTIVE_PLAYERS = new ConcurrentHashMap<>();
     private static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
             .named(new ResourceLocation(BlackForgeCompat.MOD_ID, "tactical_attack"))
             .networkProtocolVersion(() -> PROTOCOL)
@@ -33,12 +33,16 @@ public final class TacticalAttackNetwork {
                 .add();
     }
 
-    public static void send(boolean active) {
-        CHANNEL.sendToServer(new StateMessage(active));
+    public static void send(boolean active, float facingYaw) {
+        CHANNEL.sendToServer(new StateMessage(active, facingYaw));
     }
 
     public static boolean isActive(ServerPlayer player) {
-        return ACTIVE_PLAYERS.contains(player.getUUID());
+        return ACTIVE_PLAYERS.containsKey(player.getUUID());
+    }
+
+    public static float getFacingYaw(ServerPlayer player) {
+        return ACTIVE_PLAYERS.getOrDefault(player.getUUID(), player.yBodyRot);
     }
 
     @SubscribeEvent
@@ -46,20 +50,23 @@ public final class TacticalAttackNetwork {
         ACTIVE_PLAYERS.remove(event.getEntity().getUUID());
     }
 
-    private record StateMessage(boolean active) {
+    private record StateMessage(boolean active, float facingYaw) {
         private static void encode(StateMessage message, FriendlyByteBuf buffer) {
             buffer.writeBoolean(message.active);
+            buffer.writeFloat(message.facingYaw);
         }
 
         private static StateMessage decode(FriendlyByteBuf buffer) {
-            return new StateMessage(buffer.readBoolean());
+            return new StateMessage(buffer.readBoolean(), buffer.readFloat());
         }
 
         private static void handle(StateMessage message, Supplier<NetworkEvent.Context> supplier) {
             NetworkEvent.Context context = supplier.get();
             ServerPlayer sender = context.getSender();
             if (sender != null) {
-                if (message.active) ACTIVE_PLAYERS.add(sender.getUUID());
+                if (message.active && Float.isFinite(message.facingYaw)) {
+                    ACTIVE_PLAYERS.put(sender.getUUID(), message.facingYaw);
+                }
                 else ACTIVE_PLAYERS.remove(sender.getUUID());
             }
             context.setPacketHandled(true);

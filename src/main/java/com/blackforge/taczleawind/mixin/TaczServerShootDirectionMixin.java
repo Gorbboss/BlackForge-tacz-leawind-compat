@@ -56,7 +56,7 @@ public abstract class TaczServerShootDirectionMixin {
             Supplier<Float> original
     ) {
         if (!blackforge$useHipFireDirection()) return original;
-        float facingYaw = shooter.yBodyRot;
+        float facingYaw = TacticalAttackNetwork.getFacingYaw((ServerPlayer) shooter);
         return () -> facingYaw;
     }
 

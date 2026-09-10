@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.30
+
+- Fixes Passive TaCZ client-side shot prediction being disconnected from the
+  character-facing server direction.
+- Synchronizes the visible Passive body yaw to the server.
+- Treats the initial right-click frame as ADS immediately, restoring the head
+  tilt in both animation stances.
+- Clears stale backwards-walking body and head yaw when Tactical ADS begins.
+
 ## 0.4.29
 
 - Removes attack-key-dependent rotation locking.

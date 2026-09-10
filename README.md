@@ -1,5 +1,18 @@
 # BlackForge TLC Camera
 
+## Version 0.4.30
+
+- Passive hip-fire now applies the same visible body yaw and level pitch to
+  TaCZ client prediction and the authoritative server shot.
+- Synchronizes the exact displayed Passive body yaw instead of asking the
+  server to estimate it from its own animation state.
+- Releases all BlackForge stance rotation overrides as soon as right-click is
+  pressed, restoring TaCZ/Leawind head tilt and native ADS rotation in both
+  Passive and Tactical.
+- On Tactical ADS entry, aligns stale backwards-walking body/head yaw to the
+  current player rotation before Leawind takes over, preventing the brief
+  backwards-facing flicker.
+
 ## Version 0.4.29
 
 - Replaces the firing-button rotation lock with continuous stance behavior.
