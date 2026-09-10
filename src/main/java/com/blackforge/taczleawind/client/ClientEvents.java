@@ -23,10 +23,10 @@ public final class ClientEvents {
         ScopedFirstPersonController.update();
         net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
         if (minecraft.player != null && minecraft.getConnection() != null) {
-            boolean tacticalAttackState = TacticalForwardAttack.isActive();
-            if (!tacticalStateSent || tacticalAttackState != lastTacticalAttackState) {
-                TacticalAttackNetwork.send(tacticalAttackState);
-                lastTacticalAttackState = tacticalAttackState;
+            boolean passiveForwardState = TacticalForwardAttack.isPassiveForwardMode();
+            if (!tacticalStateSent || passiveForwardState != lastTacticalAttackState) {
+                TacticalAttackNetwork.send(passiveForwardState);
+                lastTacticalAttackState = passiveForwardState;
                 tacticalStateSent = true;
             }
         } else {

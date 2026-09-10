@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.29
+
+- Removes attack-key-dependent rotation locking.
+- Passive mode blocks camera/crosshair rotation continuously outside ADS while
+  retaining level movement-direction turning.
+- Tactical mode continuously replaces Leawind's chosen rotation with the
+  player-to-crosshair rotation, including while moving.
+- Changes the synchronized TaCZ body-facing override to Passive hip-fire only.
+- Preserves normal TaCZ ADS and high-magnification scope transitions.
+
 ## 0.4.28
 
 - Adds a final guard at Leawind's `EntityAgent#setRawRotation` write while an

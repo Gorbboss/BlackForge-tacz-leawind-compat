@@ -39,7 +39,7 @@ public final class ForwardAimGuard {
         // ADS retains the camera/crosshair ray. Hip fire and ordinary attacks
         // use a perfectly level ray along the rendered character's body.
         if (!ScopedFirstPersonController.isAiming(player)) {
-            if (!TacticalForwardAttack.isActive()) return;
+            if (!TacticalForwardAttack.isPassiveForwardMode()) return;
             float bodyYaw = Mth.rotLerp(partialTick, player.yBodyRotO, player.yBodyRot);
             setPick(mc, player, playerEye,
                     Vec3.directionFromRotation(0.0F, bodyYaw).normalize());

@@ -20,7 +20,7 @@ public final class TacticalForwardAttack {
     private static volatile boolean lookupAttempted;
     private static Field tacticalValueField;
 
-    public static boolean isActive() {
+    public static boolean isEligibleThirdPerson() {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         if (player == null
@@ -29,12 +29,22 @@ public final class TacticalForwardAttack {
                 || ScopedFirstPersonController.isAiming(player)) {
             return false;
         }
-        return movementTacticalEnabled() && isEligible(player.getMainHandItem());
+        return isEligible(player.getMainHandItem());
+    }
+
+    /** Tactical hip-fire continuously follows the camera crosshair. */
+    public static boolean isTacticalCrosshairMode() {
+        return isEligibleThirdPerson() && movementTacticalEnabled();
+    }
+
+    /** Passive hip-fire remains level and follows the character's facing. */
+    public static boolean isPassiveForwardMode() {
+        return isEligibleThirdPerson() && !movementTacticalEnabled();
     }
 
     public static boolean shouldSuppressLeawindInteraction() {
         Minecraft mc = Minecraft.getInstance();
-        return isActive()
+        return isPassiveForwardMode()
                 && mc.options.keyAttack.isDown()
                 && !mc.options.keyUse.isDown()
                 && !mc.options.keyPickItem.isDown();
@@ -51,7 +61,7 @@ public final class TacticalForwardAttack {
                 .anyMatch(configured -> id.toString().equals(configured));
     }
 
-    private static boolean movementTacticalEnabled() {
+    public static boolean movementTacticalEnabled() {
         try {
             if (!lookupAttempted) {
                 lookupAttempted = true;

@@ -1,5 +1,17 @@
 # BlackForge TLC Camera
 
+## Version 0.4.29
+
+- Replaces the firing-button rotation lock with continuous stance behavior.
+- Passive outside ADS never follows the camera crosshair: movement may turn the
+  player, stationary facing is retained, and pitch remains level.
+- Tactical outside ADS continuously follows the camera crosshair, whether the
+  player is moving, stopped, firing, or idle.
+- Right-click TaCZ ADS keeps the existing precise crosshair and >2.5x scope
+  transition in both stances.
+- Passive hip-fire uses body-facing server shot direction; Tactical and ADS use
+  the normal crosshair-facing player rotation.
+
 ## Version 0.4.28
 
 - Cancels Leawind's final raw player-rotation write during an eligible Tactical
