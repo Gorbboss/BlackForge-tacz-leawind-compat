@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.31
+
+- Adds 12-block Passive and 9-block Tactical camera distance limits.
+- Makes Passive right-click aim horizontally toward the crosshair while
+  retaining zero weapon pitch.
+- Removes direct head rotation writes so the Fresh Animations ADS head tilt
+  can remain active.
+- Prevents backwards-movement ADS flicker by maintaining Tactical body yaw
+  continuously before the native ADS handoff.
+- Synchronizes Passive right-click horizontal firing yaw on client and server.
+
 ## 0.4.30
 
 - Fixes Passive TaCZ client-side shot prediction being disconnected from the

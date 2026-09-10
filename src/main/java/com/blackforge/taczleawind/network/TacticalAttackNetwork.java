@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 public final class TacticalAttackNetwork {
-    private static final String PROTOCOL = "2";
+    private static final String PROTOCOL = "3";
     private static final Map<UUID, Float> ACTIVE_PLAYERS = new ConcurrentHashMap<>();
     private static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
             .named(new ResourceLocation(BlackForgeCompat.MOD_ID, "tactical_attack"))

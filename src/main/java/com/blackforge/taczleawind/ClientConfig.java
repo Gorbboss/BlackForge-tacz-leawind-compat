@@ -47,7 +47,7 @@ public final class ClientConfig {
                 .defineInRange("forwardHemisphereDegrees", 90.0D, 30.0D, 90.0D);
 
         TACTICAL_FORWARD_ITEMS = b
-                .comment("Extra item IDs that attack straight ahead while BlackForge Movement is in Tactical stance.",
+                .comment("Extra item IDs that use BlackForge Movement's Passive/Tactical camera-facing rules.",
                         "Swords, axes, and TaCZ guns are included automatically.",
                         "Example: [\"minecraft:trident\", \"othermod:combat_knife\"]")
                 .defineListAllowEmpty(

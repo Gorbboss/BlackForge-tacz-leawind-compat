@@ -26,7 +26,7 @@ public abstract class TaczClientShootDirectionMixin {
             ordinal = 0, require = 0)
     private Supplier<Float> blackforge$passivePitch(Supplier<Float> original) {
         if (!(shooter instanceof LocalPlayer)
-                || !TacticalForwardAttack.isPassiveForwardMode()) return original;
+                || !TacticalForwardAttack.isPassiveMode()) return original;
         return () -> 0.0F;
     }
 
@@ -34,8 +34,8 @@ public abstract class TaczClientShootDirectionMixin {
             ordinal = 1, require = 0)
     private Supplier<Float> blackforge$passiveYaw(Supplier<Float> original) {
         if (!(shooter instanceof LocalPlayer)
-                || !TacticalForwardAttack.isPassiveForwardMode()) return original;
-        float facingYaw = shooter.yBodyRot;
+                || !TacticalForwardAttack.isPassiveMode()) return original;
+        float facingYaw = TacticalForwardAttack.getPassiveShotYaw();
         return () -> facingYaw;
     }
 }

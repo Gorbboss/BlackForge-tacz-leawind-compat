@@ -9,6 +9,8 @@ import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.SwordItem;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.registries.ForgeRegistries;
 
@@ -19,7 +21,6 @@ public final class TacticalForwardAttack {
     private static final String MOVEMENT_MOD_ID = "blackforge_movement";
     private static volatile boolean lookupAttempted;
     private static Field tacticalValueField;
-    private static boolean useWasDown;
 
     public static boolean isEligibleThirdPerson() {
         Minecraft mc = Minecraft.getInstance();
@@ -41,9 +42,15 @@ public final class TacticalForwardAttack {
 
     /** Passive hip-fire remains level and follows the character's facing. */
     public static boolean isPassiveForwardMode() {
-        return isEligibleThirdPerson()
-                && !movementTacticalEnabled()
-                && !isAdsRequested();
+        return isPassiveMode() && !isAdsRequested();
+    }
+
+    public static boolean isPassiveHorizontalAimMode() {
+        return isPassiveMode() && isAdsRequested();
+    }
+
+    public static boolean isPassiveMode() {
+        return isEligibleThirdPerson() && !movementTacticalEnabled();
     }
 
     public static boolean isAdsRequested() {
@@ -53,19 +60,17 @@ public final class TacticalForwardAttack {
                 || ScopedFirstPersonController.isAiming(mc.player));
     }
 
-    /** Removes the stale backwards-walking body yaw on the first ADS tick. */
-    public static void updateAdsTransition() {
+    public static float getPassiveShotYaw() {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
-        boolean useDown = player != null && mc.options.keyUse.isDown();
-        if (useDown && !useWasDown && isEligibleThirdPerson()
-                && movementTacticalEnabled()) {
-            player.yBodyRot = player.getYRot();
-            player.yBodyRotO = player.getYRot();
-            player.yHeadRot = player.getYRot();
-            player.yHeadRotO = player.getYRot();
-        }
-        useWasDown = useDown;
+        if (player == null) return 0.0F;
+        if (!isPassiveHorizontalAimMode()) return player.yBodyRot;
+
+        HitResult hit = mc.hitResult;
+        if (hit == null) return player.yBodyRot;
+        Vec3 delta = hit.getLocation().subtract(player.getEyePosition());
+        if (Math.hypot(delta.x, delta.z) < 1.0E-6D) return player.yBodyRot;
+        return (float) Math.toDegrees(Math.atan2(-delta.x, delta.z));
     }
 
     public static boolean shouldSuppressLeawindInteraction() {

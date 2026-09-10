@@ -1,5 +1,19 @@
 # BlackForge TLC Camera
 
+## Version 0.4.31
+
+- Sets the Leawind camera ceiling dynamically: 12 blocks in Passive and 9
+  blocks in Tactical.
+- Passive right-click turns horizontally toward the crosshair but keeps the
+  weapon pitch level; Passive shots remain level in both hip-fire and ADS.
+- Removes the direct head-yaw correction introduced in 0.4.30 so Fresh
+  Animations retains ownership of the ADS head tilt.
+- Keeps Tactical body yaw synchronized with its crosshair-facing yaw before
+  ADS begins, preventing the backwards-walking/crouching 180-degree flicker
+  without writing to the head rotation.
+- Sends Passive horizontal aim yaw to both TaCZ client prediction and the
+  server-authoritative shot.
+
 ## Version 0.4.30
 
 - Passive hip-fire now applies the same visible body yaw and level pitch to

@@ -22,11 +22,10 @@ public final class ClientEvents {
         }
 
         ScopedFirstPersonController.update();
-        TacticalForwardAttack.updateAdsTransition();
         net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
         if (minecraft.player != null && minecraft.getConnection() != null) {
-            boolean passiveForwardState = TacticalForwardAttack.isPassiveForwardMode();
-            float facingYaw = minecraft.player.yBodyRot;
+            boolean passiveForwardState = TacticalForwardAttack.isPassiveMode();
+            float facingYaw = TacticalForwardAttack.getPassiveShotYaw();
             if (!tacticalStateSent
                     || passiveForwardState != lastTacticalAttackState
                     || (passiveForwardState
