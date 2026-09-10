@@ -1,5 +1,11 @@
 # BlackForge TLC Camera
 
+## Version 0.4.28
+
+- Cancels Leawind's final raw player-rotation write during an eligible Tactical
+  attack. This prevents an already-selected or smoothed camera-hit target from
+  turning the character on the firing frame.
+
 ## Version 0.4.27
 
 - BlackForge Movement is optional. When it is installed and Tactical stance is

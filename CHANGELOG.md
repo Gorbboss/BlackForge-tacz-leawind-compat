@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.28
+
+- Adds a final guard at Leawind's `EntityAgent#setRawRotation` write while an
+  eligible Tactical attack is held.
+- Prevents a cached/smoothed camera-hit rotation from bypassing the earlier
+  interaction-strategy suppression on the firing frame.
+
 ## 0.4.27
 
 - Makes the forward attack behavior conditional on rear third person,

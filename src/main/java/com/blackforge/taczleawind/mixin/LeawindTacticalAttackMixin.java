@@ -6,6 +6,7 @@ import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /** Stops Leawind's attack-key camera rotation only for Tactical forward attacks. */
 @Pseudo
@@ -15,6 +16,18 @@ public abstract class LeawindTacticalAttackMixin {
     private void blackforge$keepTacticalAttackForward(CallbackInfoReturnable<Boolean> cir) {
         if (cir.getReturnValueZ() && TacticalForwardAttack.shouldSuppressLeawindInteraction()) {
             cir.setReturnValue(false);
+        }
+    }
+
+    /**
+     * Final safety gate. Strategy suppression alone can leave Leawind's
+     * smoothed CAMERA_HIT_RESULT target active for the firing frame. Cancel
+     * the final player-rotation write while the eligible attack key is held.
+     */
+    @Inject(method = "setRawRotation", at = @At("HEAD"), cancellable = true, require = 0)
+    private void blackforge$blockCrosshairRotationDuringTacticalAttack(CallbackInfo ci) {
+        if (TacticalForwardAttack.shouldSuppressLeawindInteraction()) {
+            ci.cancel();
         }
     }
 }
