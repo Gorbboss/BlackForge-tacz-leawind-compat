@@ -9,7 +9,6 @@ import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.SwordItem;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -59,9 +58,8 @@ public final class TacticalForwardAttack {
         if (player == null) return 0.0F;
         if (!isPassiveHorizontalAimMode()) return player.yBodyRot;
 
-        HitResult hit = mc.hitResult;
-        if (hit == null) return player.yBodyRot;
-        Vec3 delta = hit.getLocation().subtract(player.getEyePosition());
+        Vec3 delta = CameraCrosshairTarget.location()
+                .subtract(player.getEyePosition());
         if (Math.hypot(delta.x, delta.z) < 1.0E-6D) return player.yBodyRot;
         return (float) Math.toDegrees(Math.atan2(-delta.x, delta.z));
     }

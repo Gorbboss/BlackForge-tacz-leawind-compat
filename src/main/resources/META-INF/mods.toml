@@ -33,3 +33,12 @@ mandatory=true
 versionRange="[1.1.8,)"
 ordering="AFTER"
 side="BOTH"
+
+# If the legacy standalone bridge is still present, initialize TLC first so
+# the current-EMF supplier owns tacz_is_aiming instead of its obsolete lookup.
+[[dependencies.${mod_id}]]
+modId="tacz_emf_aim_variable"
+mandatory=false
+versionRange="[0,)"
+ordering="BEFORE"
+side="CLIENT"

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.33
+- Replaces the obsolete EMF animation-context lookup and restores
+  `tacz_is_aiming` on current EMF. Tactical now supplies the aiming animation
+  signal continuously; Passive supplies it only while RMB/ADS is active.
+- Preserves the real camera-center crosshair target before Passive's forward
+  targeting filter rewrites the gameplay hit result.
+- Passive RMB facing and TaCZ shot yaw now agree with the visible crosshair,
+  including when Leawind offsets the third-person camera.
+- Leaves Tactical body/leg rotation to Leawind and Movement so the EMF aim
+  bridge can independently control the gun/head aim layer.
+
 ## 0.4.32
 
 - Cancels TaCZ FOV magnification in Passive without canceling its aiming state.

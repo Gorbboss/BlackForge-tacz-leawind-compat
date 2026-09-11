@@ -1,6 +1,8 @@
 package com.blackforge.taczleawind.mixin;
 
 import com.blackforge.taczleawind.client.ForwardAimGuard;
+import com.blackforge.taczleawind.client.CameraCrosshairTarget;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -18,6 +20,9 @@ public abstract class GameRendererPickMixin {
             float partialTick,
             CallbackInfo ci
     ) {
+        // This is still the camera's genuine center-screen target. Preserve it
+        // before ForwardAimGuard substitutes Passive's gameplay hit result.
+        CameraCrosshairTarget.capture(Minecraft.getInstance().hitResult);
         ForwardAimGuard.enforce(partialTick);
     }
 }

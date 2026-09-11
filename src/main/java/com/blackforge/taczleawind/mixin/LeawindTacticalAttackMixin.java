@@ -1,6 +1,7 @@
 package com.blackforge.taczleawind.mixin;
 
 import com.blackforge.taczleawind.client.TacticalForwardAttack;
+import com.blackforge.taczleawind.client.CameraCrosshairTarget;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
@@ -11,7 +12,6 @@ import org.joml.Vector2d;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.lang.reflect.Method;
@@ -63,10 +63,10 @@ public abstract class LeawindTacticalAttackMixin {
     private static Vector2d blackforge$getCrosshairRotation() {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
-        HitResult hit = mc.hitResult;
-        if (player == null || hit == null) return null;
+        if (player == null) return null;
 
-        Vec3 delta = hit.getLocation().subtract(player.getEyePosition());
+        Vec3 delta = CameraCrosshairTarget.location()
+                .subtract(player.getEyePosition());
         double horizontal = Math.hypot(delta.x, delta.z);
         if (horizontal < 1.0E-6D && Math.abs(delta.y) < 1.0E-6D) return null;
 
